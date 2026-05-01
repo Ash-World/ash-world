@@ -35,6 +35,23 @@
   }
 }
 
+/* 페이지 전환 애니메이션 */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-out {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(-6px); }
+}
+
+::view-transition-old(root) {
+  animation: 200ms ease-in fade-out both;
+}
+::view-transition-new(root) {
+  animation: 280ms ease-out fade-in both;
+}
+
 /* 히어로 배경: 배경 이미지가 없을 때 CSS로 노을 풍경 재현 */
 /* site.config.ts의 hero.backgroundImage에 이미지 경로를 지정하면 이 CSS는 무시됩니다 */
 .hero-gradient {

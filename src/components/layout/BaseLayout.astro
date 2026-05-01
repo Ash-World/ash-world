@@ -2,6 +2,7 @@
 import { SITE } from '../../config/site.config';
 import Header from './Header.astro';
 import Footer from './Footer.astro';
+import { ViewTransitions } from 'astro:transitions';
 import '../../styles/global.css';
 
 interface Props {
@@ -27,6 +28,7 @@ const pageTitle = title === SITE.title ? title : `${title} | ${SITE.title}`;
     <meta name="description" content={description} />
     <link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL}favicon.svg`} />
     <title>{pageTitle}</title>
+    <ViewTransitions />
   </head>
   <body>
     <Header transparent={heroPage} />
