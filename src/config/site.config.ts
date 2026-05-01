@@ -11,8 +11,8 @@ export const SITE = {
   // 홈 히어로 섹션
   hero: {
     greeting: 'Hello,',
-    name: 'ash-hun',
-    subtitle: "What do you want to explore today?",
+    name: 'Ash',
+    subtitle: "What you want to today?",
     // public/images/backgrounds/ 경로 기준 (비우면 CSS 그라데이션 사용)
     backgroundImage: '/ash-world/images/backgrounds/hero-bg.jpg',
     // 이미지 교체 시 핵심 피사체 위치에 맞게 조정 (CSS background-position 값)
@@ -25,11 +25,10 @@ export const SITE = {
   categories: [
     'All',
     'AI',
-    'Backend',
-    'Frontend',
-    'DevOps',
-    'Architecture',
-    'Review',
+    'LLM',
+    'RAG',
+    'Agent',
+    'Harness',
   ],
 
   // 홈 페이지 섹션 문구
