@@ -2,7 +2,6 @@
 import { getCollection } from 'astro:content';
 import BaseLayout from '../components/layout/BaseLayout.astro';
 import HeroSection from '../components/home/HeroSection.astro';
-import CategoryTags from '../components/home/CategoryTags.astro';
 import PostCard from '../components/post/PostCard.astro';
 import { SITE } from '../config/site.config';
 
@@ -12,15 +11,10 @@ const latestPosts = allPosts
   .slice(0, SITE.home.latestPostsCount);
 ---
 
-<BaseLayout>
+<BaseLayout heroPage={true}>
   <HeroSection />
 
-  <div class="max-w-6xl mx-auto px-6 py-12 space-y-12">
-    <!-- 카테고리 태그 -->
-    <section>
-      <CategoryTags />
-    </section>
-
+  <div class="max-w-screen-2xl mx-auto px-8 py-12 space-y-12">
     <!-- 최신 포스트 -->
     <section>
       <div class="flex items-center justify-between mb-6">

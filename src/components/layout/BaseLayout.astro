@@ -2,16 +2,19 @@
 import { SITE } from '../../config/site.config';
 import Header from './Header.astro';
 import Footer from './Footer.astro';
+import { ViewTransitions } from 'astro:transitions';
 import '../../styles/global.css';
 
 interface Props {
   title?: string;
   description?: string;
+  heroPage?: boolean;
 }
 
 const {
   title = SITE.title,
   description = SITE.description,
+  heroPage = false,
 } = Astro.props;
 
 const pageTitle = title === SITE.title ? title : `${title} | ${SITE.title}`;
@@ -25,9 +28,12 @@ const pageTitle = title === SITE.title ? title : `${title} | ${SITE.title}`;
     <meta name="description" content={description} />
     <link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL}favicon.svg`} />
     <title>{pageTitle}</title>
+    <ViewTransitions />
   </head>
   <body>
-    <Header />
+    <Header transparent={heroPage} />
+    <!-- heroPage면 헤더가 히어로 위에 floating → spacer 불필요 -->
+    {!heroPage && <div class="h-16" />}
     <main>
       <slot />
     </main>

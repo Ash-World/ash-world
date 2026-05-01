@@ -1,31 +1,36 @@
 ---
 import { SITE } from '../../config/site.config';
+import CategoryTags from './CategoryTags.astro';
 
 const { hero } = SITE;
 ---
 
-<section
-  class="relative min-h-[70vh] flex items-end pb-16 overflow-hidden"
-  style={`background-color: ${hero.backgroundFallbackColor};`}
->
-  <!-- 배경 이미지 (site.config.ts의 hero.backgroundImage에서 제어) -->
-  {hero.backgroundImage && (
+<section class="relative w-full h-screen min-h-[600px] overflow-hidden">
+
+  <!-- 배경 이미지 or CSS 그라데이션 -->
+  {hero.backgroundImage ? (
     <div
-      class="absolute inset-0 bg-cover bg-center bg-no-repeat"
-      style={`background-image: url('${hero.backgroundImage}');`}
+      class="absolute inset-0 bg-cover bg-no-repeat"
+      style={`background-image: url('${hero.backgroundImage}'); background-position: ${'backgroundPosition' in hero ? hero.backgroundPosition : 'center center'};`}
     />
+  ) : (
+    <div class="absolute inset-0 hero-gradient" />
   )}
 
-  <!-- 그라데이션 오버레이 -->
-  <div class="absolute inset-0 bg-gradient-to-t from-bg-primary via-bg-primary/60 to-transparent" />
-  <div class="absolute inset-0 bg-gradient-to-r from-bg-primary/80 via-transparent to-transparent" />
+  <!-- 오버레이 레이어 -->
+  <div class="absolute inset-0 bg-gradient-to-r from-black/60 via-black/20 to-transparent" />
+  <div class="absolute inset-0 bg-gradient-to-b from-black/50 via-black/10 to-transparent" />
+  <div class="absolute inset-0 bg-gradient-to-t from-bg-primary via-bg-primary/40 to-transparent" />
 
-  <!-- 콘텐츠 -->
-  <div class="relative z-10 max-w-6xl mx-auto px-6 w-full">
-    <p class="text-text-secondary text-lg mb-2">{hero.greeting}</p>
-    <h1 class="text-5xl sm:text-6xl font-bold mb-3">
-      <span class="gradient-text">{hero.name}</span>
-    </h1>
-    <p class="text-text-secondary text-xl">{hero.subtitle}</p>
+  <!-- 메인 콘텐츠 -->
+  <div class="absolute inset-0 z-10 flex flex-col justify-center pt-[8%]">
+    <div class="max-w-screen-2xl mx-auto w-full px-16 sm:px-20 lg:px-28">
+      <h1 class="text-5xl sm:text-6xl lg:text-7xl mb-3 leading-[1.1] tracking-tight">
+        <span class="text-white font-thin drop-shadow-lg">{hero.greeting} </span><span class="text-white font-normal drop-shadow-lg">{hero.name}</span>
+      </h1>
+      <p class="text-white/55 text-base sm:text-lg mb-8 font-light tracking-wide">{hero.subtitle}</p>
+      <CategoryTags />
+    </div>
   </div>
+
 </section>

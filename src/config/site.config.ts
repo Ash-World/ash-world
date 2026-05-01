@@ -11,10 +11,13 @@ export const SITE = {
   // 홈 히어로 섹션
   hero: {
     greeting: 'Hello,',
-    name: 'ash-hun',
-    subtitle: "What do you want to explore today?",
-    // public/images/backgrounds/ 경로 기준
+    name: 'Ash',
+    subtitle: "What you want to today?",
+    // public/images/backgrounds/ 경로 기준 (비우면 CSS 그라데이션 사용)
     backgroundImage: '/ash-world/images/backgrounds/hero-bg.jpg',
+    // 이미지 교체 시 핵심 피사체 위치에 맞게 조정 (CSS background-position 값)
+    // 예: 'center center', 'center top', '70% 60%'
+    backgroundPosition: 'center 65%',
     backgroundFallbackColor: '#0a0a0f',
   },
 
@@ -22,11 +25,10 @@ export const SITE = {
   categories: [
     'All',
     'AI',
-    'Backend',
-    'Frontend',
-    'DevOps',
-    'Architecture',
-    'Review',
+    'LLM',
+    'RAG',
+    'Agent',
+    'Harness',
   ],
 
   // 홈 페이지 섹션 문구
@@ -49,9 +51,10 @@ export const SITE = {
   about: {
     title: 'About Me',
     bio: '백엔드와 AI 시스템을 좋아하는 개발자입니다. 배운 것을 기록하고 공유합니다.',
-    avatarImage: '/ash-world/images/avatar.jpg',
+    avatarImage: 'https://github.com/ash-hun.png',
     links: [
       { label: 'GitHub', href: 'https://github.com/ash-hun' },
+      { label: 'LinkedIn', href: 'https://www.linkedin.com/in/choijaehun/' },
     ],
   },
 
