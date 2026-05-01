@@ -13,4 +13,10 @@ export default defineConfig({
     sitemap(),
     tailwind({ applyBaseStyles: false }),
   ],
+  markdown: {
+    shikiConfig: {
+      theme: 'github-dark',
+      wrap: false,
+    },
+  },
 });
