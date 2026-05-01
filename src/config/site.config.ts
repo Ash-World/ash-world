@@ -51,9 +51,10 @@ export const SITE = {
   about: {
     title: 'About Me',
     bio: '백엔드와 AI 시스템을 좋아하는 개발자입니다. 배운 것을 기록하고 공유합니다.',
-    avatarImage: '/ash-world/images/avatar.jpg',
+    avatarImage: 'https://github.com/ash-hun.png',
     links: [
       { label: 'GitHub', href: 'https://github.com/ash-hun' },
+      { label: 'LinkedIn', href: 'https://www.linkedin.com/in/choijaehun/' },
     ],
   },
 
