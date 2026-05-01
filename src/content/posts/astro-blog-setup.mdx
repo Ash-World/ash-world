@@ -1,0 +1,49 @@
+---
+title: "Astro로 GitHub Pages 블로그 만들기"
+description: "Astro + Tailwind + MDX + GitHub Actions 조합으로 개인 블로그를 구축하는 과정을 정리했습니다."
+publishDate: 2026-05-01
+tags: ["Astro", "DevOps", "Frontend"]
+draft: false
+---
+
+## 왜 Astro인가
+
+정적 사이트 생성기는 많지만 Astro를 선택한 이유는 세 가지입니다.
+
+1. **Zero JS by default** — 불필요한 JS를 기본적으로 제거해 성능이 뛰어납니다.
+2. **콘텐츠 컬렉션** — MDX 파일을 타입 안전하게 관리할 수 있습니다.
+3. **아일랜드 아키텍처** — React, Vue 등 여러 프레임워크를 필요한 부분에만 사용 가능합니다.
+
+## 프로젝트 구조
+
+```
+src/
+├── config/
+│   └── site.config.ts   # 문구/이미지 중앙 관리
+├── content/
+│   └── posts/           # MDX 포스트
+├── components/
+│   ├── layout/
+│   ├── home/
+│   └── post/
+└── pages/
+```
+
+## GitHub Actions 배포
+
+PR을 머지하면 자동으로 빌드 후 GitHub Pages에 배포됩니다.
+
+```yaml
+on:
+  push:
+    branches: [main]
+```
+
+PR 단계에서는 빌드만 검증하고 실제 배포는 `main` 머지 후에만 진행됩니다.
+
+## 포스팅 워크플로우
+
+1. `src/content/posts/` 에 `.mdx` 파일 작성
+2. PR 생성
+3. 빌드 CI 통과 확인
+4. `main` 머지 → 자동 배포

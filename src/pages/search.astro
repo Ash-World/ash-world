@@ -1,0 +1,29 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../components/layout/BaseLayout.astro';
+import SearchBox from '../components/common/SearchBox';
+import { SITE } from '../config/site.config';
+
+const allPosts = await getCollection('posts', ({ data }) => !data.draft);
+const base = SITE.nav.links[0].href;
+
+const posts = allPosts.map((post) => ({
+  slug: post.slug,
+  title: post.data.title,
+  description: post.data.description,
+  tags: post.data.tags,
+  publishDate: post.data.publishDate.toISOString(),
+  href: `${base}posts/${post.slug}`,
+}));
+---
+
+<BaseLayout title="Search" description="포스트 검색">
+  <div class="max-w-2xl mx-auto px-6 py-12">
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold text-text-primary mb-2">Search</h1>
+      <p class="text-text-secondary">총 {posts.length}개의 포스트에서 검색</p>
+    </div>
+
+    <SearchBox client:load posts={posts} />
+  </div>
+</BaseLayout>

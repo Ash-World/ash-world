@@ -1,0 +1,20 @@
+---
+interface Props {
+  tag: string;
+  href?: string;
+  active?: boolean;
+  count?: number;
+}
+
+const { tag, href, active = false, count } = Astro.props;
+---
+
+{href ? (
+  <a href={href} class={`tag-pill ${active ? 'active' : ''}`}>
+    {tag}{count !== undefined && <span class="ml-1 opacity-60 text-xs">({count})</span>}
+  </a>
+) : (
+  <span class={`tag-pill ${active ? 'active' : ''}`}>
+    {tag}{count !== undefined && <span class="ml-1 opacity-60 text-xs">({count})</span>}
+  </span>
+)}

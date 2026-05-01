@@ -1,0 +1,85 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../components/layout/BaseLayout.astro';
+import TagPill from '../../components/common/TagPill.astro';
+import { SITE } from '../../config/site.config';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('posts', ({ data }) => !data.draft);
+  return posts.map((post) => ({ params: { slug: post.slug }, props: { post } }));
+}
+
+const { post } = Astro.props;
+const { Content } = await post.render();
+
+const base = SITE.nav.links[0].href;
+
+const formattedDate = post.data.publishDate.toLocaleDateString('ko-KR', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+});
+---
+
+<BaseLayout title={post.data.title} description={post.data.description}>
+  <article class="max-w-3xl mx-auto px-6 py-12">
+    <!-- 헤더 -->
+    <header class="mb-10">
+      <div class="flex flex-wrap gap-2 mb-4">
+        {post.data.tags.map((tag) => (
+          <TagPill tag={tag} href={`${base}tags/${tag}`} />
+        ))}
+      </div>
+
+      <h1 class="text-3xl sm:text-4xl font-bold text-text-primary leading-tight mb-4">
+        {post.data.title}
+      </h1>
+
+      <p class="text-text-secondary text-lg mb-6">{post.data.description}</p>
+
+      <div class="flex items-center gap-4 text-text-muted text-sm border-b border-border-subtle pb-6">
+        <time datetime={post.data.publishDate.toISOString()}>{formattedDate}</time>
+        {post.data.updatedDate && (
+          <span>
+            · 수정됨:{' '}
+            {post.data.updatedDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })}
+          </span>
+        )}
+      </div>
+    </header>
+
+    <!-- 커버 이미지 -->
+    {post.data.cover && (
+      <img
+        src={post.data.cover}
+        alt={post.data.title}
+        class="w-full rounded-xl mb-10 opacity-90"
+      />
+    )}
+
+    <!-- 본문 -->
+    <div class="prose prose-invert max-w-none
+      prose-headings:text-text-primary
+      prose-p:text-text-secondary prose-p:leading-relaxed
+      prose-a:text-accent-amber prose-a:no-underline hover:prose-a:underline
+      prose-strong:text-text-primary
+      prose-code:text-accent-warm prose-code:bg-white/[0.06] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
+      prose-pre:bg-bg-secondary prose-pre:border prose-pre:border-border-subtle
+      prose-blockquote:border-accent-amber/40 prose-blockquote:text-text-secondary
+      prose-hr:border-border-subtle
+      prose-img:rounded-xl
+    ">
+      <Content />
+    </div>
+
+    <!-- 푸터 네비게이션 -->
+    <div class="mt-12 pt-8 border-t border-border-subtle">
+      <a
+        href={`${base}posts`}
+        class="text-text-secondary hover:text-accent-amber transition-colors duration-200 text-sm"
+      >
+        ← 모든 포스트 보기
+      </a>
+    </div>
+  </article>
+</BaseLayout>

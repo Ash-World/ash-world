@@ -1,0 +1,31 @@
+---
+import { SITE } from '../../config/site.config';
+
+const { hero } = SITE;
+---
+
+<section
+  class="relative min-h-[70vh] flex items-end pb-16 overflow-hidden"
+  style={`background-color: ${hero.backgroundFallbackColor};`}
+>
+  <!-- 배경 이미지 (site.config.ts의 hero.backgroundImage에서 제어) -->
+  {hero.backgroundImage && (
+    <div
+      class="absolute inset-0 bg-cover bg-center bg-no-repeat"
+      style={`background-image: url('${hero.backgroundImage}');`}
+    />
+  )}
+
+  <!-- 그라데이션 오버레이 -->
+  <div class="absolute inset-0 bg-gradient-to-t from-bg-primary via-bg-primary/60 to-transparent" />
+  <div class="absolute inset-0 bg-gradient-to-r from-bg-primary/80 via-transparent to-transparent" />
+
+  <!-- 콘텐츠 -->
+  <div class="relative z-10 max-w-6xl mx-auto px-6 w-full">
+    <p class="text-text-secondary text-lg mb-2">{hero.greeting}</p>
+    <h1 class="text-5xl sm:text-6xl font-bold mb-3">
+      <span class="gradient-text">{hero.name}</span>
+    </h1>
+    <p class="text-text-secondary text-xl">{hero.subtitle}</p>
+  </div>
+</section>

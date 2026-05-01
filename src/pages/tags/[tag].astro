@@ -1,0 +1,51 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../components/layout/BaseLayout.astro';
+import PostCard from '../../components/post/PostCard.astro';
+import { SITE } from '../../config/site.config';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('posts', ({ data }) => !data.draft);
+  const tags = [...new Set(posts.flatMap((p) => p.data.tags))];
+
+  return tags.map((tag) => ({
+    params: { tag },
+    props: {
+      posts: posts
+        .filter((p) => p.data.tags.includes(tag))
+        .sort((a, b) => b.data.publishDate.getTime() - a.data.publishDate.getTime()),
+    },
+  }));
+}
+
+const { tag } = Astro.params;
+const { posts } = Astro.props;
+const base = SITE.nav.links[0].href;
+---
+
+<BaseLayout title={`#${tag}`} description={`${tag} 태그의 포스트 목록`}>
+  <div class="max-w-6xl mx-auto px-6 py-12">
+    <div class="mb-10">
+      <a href={`${base}posts`} class="text-text-muted hover:text-accent-amber text-sm transition-colors mb-4 inline-block">
+        ← Posts
+      </a>
+      <h1 class="text-3xl font-bold text-text-primary">
+        <span class="text-accent-amber">#</span>{tag}
+      </h1>
+      <p class="text-text-secondary mt-1">{posts.length}개의 글</p>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      {posts.map((post) => (
+        <PostCard
+          slug={post.slug}
+          title={post.data.title}
+          description={post.data.description}
+          publishDate={post.data.publishDate}
+          tags={post.data.tags}
+          cover={post.data.cover}
+        />
+      ))}
+    </div>
+  </div>
+</BaseLayout>

@@ -1,0 +1,21 @@
+---
+import { SITE } from '../../config/site.config';
+import TagPill from '../common/TagPill.astro';
+
+interface Props {
+  activeCategory?: string;
+}
+
+const { activeCategory = 'All' } = Astro.props;
+const base = SITE.nav.links[0].href;
+---
+
+<div class="flex flex-wrap gap-2">
+  {SITE.categories.map((cat) => (
+    <TagPill
+      tag={cat}
+      href={cat === 'All' ? `${base}posts` : `${base}tags/${cat}`}
+      active={cat === activeCategory}
+    />
+  ))}
+</div>

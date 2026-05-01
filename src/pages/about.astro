@@ -1,0 +1,44 @@
+---
+import BaseLayout from '../components/layout/BaseLayout.astro';
+import { SITE } from '../config/site.config';
+
+const { about } = SITE;
+---
+
+<BaseLayout title="About" description={about.bio}>
+  <div class="max-w-2xl mx-auto px-6 py-16">
+    <div class="glass-card p-8 sm:p-12">
+      <!-- 아바타 -->
+      <div class="flex flex-col sm:flex-row items-center sm:items-start gap-8 mb-8">
+        <div class="w-24 h-24 rounded-full overflow-hidden border-2 border-border-hover shrink-0 bg-bg-secondary">
+          {about.avatarImage ? (
+            <img src={about.avatarImage} alt={SITE.author} class="w-full h-full object-cover" />
+          ) : (
+            <div class="w-full h-full flex items-center justify-center text-3xl font-bold gradient-text">
+              {SITE.author.charAt(0).toUpperCase()}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <h1 class="text-2xl font-bold text-text-primary mb-1">{SITE.author}</h1>
+          <p class="text-text-secondary leading-relaxed">{about.bio}</p>
+        </div>
+      </div>
+
+      <!-- 링크 -->
+      <div class="flex flex-wrap gap-3 pt-6 border-t border-border-subtle">
+        {about.links.map((link) => (
+          <a
+            href={link.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="tag-pill"
+          >
+            {link.label}
+          </a>
+        ))}
+      </div>
+    </div>
+  </div>
+</BaseLayout>

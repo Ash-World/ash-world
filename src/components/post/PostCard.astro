@@ -1,0 +1,56 @@
+---
+import TagPill from '../common/TagPill.astro';
+import { SITE } from '../../config/site.config';
+
+interface Props {
+  slug: string;
+  title: string;
+  description: string;
+  publishDate: Date;
+  tags: string[];
+  cover?: string;
+}
+
+const { slug, title, description, publishDate, tags, cover } = Astro.props;
+
+const formattedDate = publishDate.toLocaleDateString('ko-KR', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+});
+
+const href = `${SITE.nav.links[0].href}posts/${slug}`;
+---
+
+<article class="glass-card overflow-hidden group">
+  {cover && (
+    <a href={href}>
+      <img
+        src={cover}
+        alt={title}
+        class="w-full h-48 object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-300"
+        loading="lazy"
+      />
+    </a>
+  )}
+
+  <div class="p-6">
+    <div class="flex flex-wrap gap-2 mb-3">
+      {tags.slice(0, 3).map((tag) => (
+        <TagPill tag={tag} href={`${SITE.nav.links[0].href}tags/${tag}`} />
+      ))}
+    </div>
+
+    <a href={href} class="block group/title">
+      <h2 class="text-lg font-semibold text-text-primary mb-2 group-hover/title:text-accent-amber transition-colors duration-200 line-clamp-2">
+        {title}
+      </h2>
+    </a>
+
+    <p class="text-text-secondary text-sm line-clamp-2 mb-4">{description}</p>
+
+    <time class="text-text-muted text-xs" datetime={publishDate.toISOString()}>
+      {formattedDate}
+    </time>
+  </div>
+</article>
