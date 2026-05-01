@@ -23,47 +23,38 @@ const base = SITE.nav.links[0].href;
 
 <BaseLayout title="Posts" description="모든 포스트 목록">
   <div class="max-w-screen-2xl mx-auto px-8 py-12">
-    <div class="mb-10">
+    <div class="mb-6">
       <h1 class="text-3xl font-bold text-text-primary mb-2">Posts</h1>
       <p class="text-text-secondary">총 {sortedPosts.length}개의 글</p>
     </div>
 
-    <div class="flex gap-10">
-      <!-- 포스트 목록 -->
-      <div class="flex-1">
-        {sortedPosts.length === 0 ? (
-          <div class="glass-card p-12 text-center">
-            <p class="text-text-muted">아직 작성된 포스트가 없습니다.</p>
-          </div>
-        ) : (
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            {sortedPosts.map((post) => (
-              <PostCard
-                slug={post.slug}
-                title={post.data.title}
-                description={post.data.description}
-                publishDate={post.data.publishDate}
-                tags={post.data.tags}
-                cover={post.data.cover}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      <!-- 태그 사이드바 -->
-      <aside class="hidden lg:block w-56 shrink-0">
-        <div class="glass-card p-5 sticky top-24">
-          <h3 class="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-4">Tags</h3>
-          <div class="flex flex-wrap gap-2">
-            {Object.entries(tagCounts)
-              .sort((a, b) => b[1] - a[1])
-              .map(([tag, count]) => (
-                <TagPill tag={tag} href={`${base}tags/${tag}`} count={count} />
-              ))}
-          </div>
-        </div>
-      </aside>
+    <!-- 태그 필터 -->
+    <div class="flex flex-wrap gap-2 mb-10">
+      {Object.entries(tagCounts)
+        .sort((a, b) => b[1] - a[1])
+        .map(([tag, count]) => (
+          <TagPill tag={tag} href={`${base}tags/${tag}`} count={count} />
+        ))}
     </div>
+
+    <!-- 포스트 목록 -->
+    {sortedPosts.length === 0 ? (
+      <div class="glass-card p-12 text-center">
+        <p class="text-text-muted">아직 작성된 포스트가 없습니다.</p>
+      </div>
+    ) : (
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        {sortedPosts.map((post) => (
+          <PostCard
+            slug={post.slug}
+            title={post.data.title}
+            description={post.data.description}
+            publishDate={post.data.publishDate}
+            tags={post.data.tags}
+            cover={post.data.cover}
+          />
+        ))}
+      </div>
+    )}
   </div>
 </BaseLayout>
