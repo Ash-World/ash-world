@@ -41,16 +41,11 @@ const iconClass = [
       aria-expanded="false"
       class={iconClass}
     >
-      <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-        <circle cx="4"  cy="5"  r="1.8" />
-        <circle cx="10" cy="5"  r="1.8" />
-        <circle cx="16" cy="5"  r="1.8" />
-        <circle cx="4"  cy="10" r="1.8" />
-        <circle cx="10" cy="10" r="1.8" />
-        <circle cx="16" cy="10" r="1.8" />
-        <circle cx="4"  cy="15" r="1.8" />
-        <circle cx="10" cy="15" r="1.8" />
-        <circle cx="16" cy="15" r="1.8" />
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor">
+        <circle cx="5"  cy="5"  r="2" />
+        <circle cx="13" cy="5"  r="2" />
+        <circle cx="5"  cy="13" r="2" />
+        <circle cx="13" cy="13" r="2" />
       </svg>
     </button>
 
@@ -200,30 +195,37 @@ const iconClass = [
 </nav>
 
 <script>
-  const toggle   = document.getElementById('menu-toggle');
-  const close    = document.getElementById('menu-close');
-  const panel    = document.getElementById('menu-panel');
-  const backdrop = document.getElementById('menu-backdrop');
+  // View Transitions 사용 시 페이지 이동마다 재실행 필요
+  function initMenu() {
+    const toggle   = document.getElementById('menu-toggle');
+    const close    = document.getElementById('menu-close');
+    const panel    = document.getElementById('menu-panel');
+    const backdrop = document.getElementById('menu-backdrop');
 
-  function openMenu() {
-    panel?.classList.remove('-translate-x-full');
-    backdrop?.classList.remove('opacity-0', 'pointer-events-none');
-    toggle?.setAttribute('aria-expanded', 'true');
-    document.body.style.overflow = 'hidden';
+    if (!toggle || !close || !panel || !backdrop) return;
+
+    function openMenu() {
+      panel.classList.remove('-translate-x-full');
+      backdrop.classList.remove('opacity-0', 'pointer-events-none');
+      toggle.setAttribute('aria-expanded', 'true');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeMenu() {
+      panel.classList.add('-translate-x-full');
+      backdrop.classList.add('opacity-0', 'pointer-events-none');
+      toggle.setAttribute('aria-expanded', 'false');
+      document.body.style.overflow = '';
+    }
+
+    toggle.addEventListener('click', openMenu);
+    close.addEventListener('click', closeMenu);
+    backdrop.addEventListener('click', closeMenu);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeMenu();
+    }, { once: true });
   }
 
-  function closeMenu() {
-    panel?.classList.add('-translate-x-full');
-    backdrop?.classList.add('opacity-0', 'pointer-events-none');
-    toggle?.setAttribute('aria-expanded', 'false');
-    document.body.style.overflow = '';
-  }
-
-  toggle?.addEventListener('click', openMenu);
-  close?.addEventListener('click', closeMenu);
-  backdrop?.addEventListener('click', closeMenu);
-
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeMenu();
-  });
+  // 초기 로드 + View Transitions 이후 페이지 이동 시 모두 실행
+  document.addEventListener('astro:page-load', initMenu);
 </script>
