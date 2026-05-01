@@ -35,6 +35,20 @@
   }
 }
 
+/* 히어로 배경: 배경 이미지가 없을 때 CSS로 노을 풍경 재현 */
+/* site.config.ts의 hero.backgroundImage에 이미지 경로를 지정하면 이 CSS는 무시됩니다 */
+.hero-gradient {
+  background:
+    /* 하늘 */
+    radial-gradient(ellipse 120% 60% at 65% 20%, #c2410c 0%, #92400e 30%, #1c1917 60%, #0a0a0f 100%),
+    /* 구름 하이라이트 */
+    radial-gradient(ellipse 60% 40% at 70% 15%, #fb923c88 0%, transparent 60%),
+    /* 지평선 warm glow */
+    radial-gradient(ellipse 100% 30% at 50% 55%, #78350f44 0%, transparent 70%),
+    /* 대지 */
+    linear-gradient(to top, #0a0a0f 0%, #1c1917 35%, transparent 55%);
+}
+
 @layer components {
   .glass-card {
     @apply bg-bg-card border border-border-subtle rounded-2xl backdrop-blur-sm;

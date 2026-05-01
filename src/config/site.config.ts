@@ -13,8 +13,11 @@ export const SITE = {
     greeting: 'Hello,',
     name: 'ash-hun',
     subtitle: "What do you want to explore today?",
-    // public/images/backgrounds/ 경로 기준
+    // public/images/backgrounds/ 경로 기준 (비우면 CSS 그라데이션 사용)
     backgroundImage: '/ash-world/images/backgrounds/hero-bg.jpg',
+    // 이미지 교체 시 핵심 피사체 위치에 맞게 조정 (CSS background-position 값)
+    // 예: 'center center', 'center top', '70% 60%'
+    backgroundPosition: 'center 65%',
     backgroundFallbackColor: '#0a0a0f',
   },
 
