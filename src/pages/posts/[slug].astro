@@ -22,20 +22,20 @@ const formattedDate = post.data.publishDate.toLocaleDateString('ko-KR', {
 ---
 
 <BaseLayout title={post.data.title} description={post.data.description}>
-  <article class="max-w-3xl mx-auto px-6 py-12">
+  <article class="max-w-2xl mx-auto px-6 py-14">
     <!-- 헤더 -->
     <header class="mb-10">
-      <div class="flex flex-wrap gap-2 mb-4">
+      <div class="flex flex-wrap gap-2 mb-5">
         {post.data.tags.map((tag) => (
           <TagPill tag={tag} href={`${base}tags/${tag}`} />
         ))}
       </div>
 
-      <h1 class="text-3xl sm:text-4xl font-bold text-text-primary leading-tight mb-4">
+      <h1 class="text-3xl sm:text-4xl font-bold text-text-primary leading-snug mb-4 tracking-tight">
         {post.data.title}
       </h1>
 
-      <p class="text-text-secondary text-lg mb-6">{post.data.description}</p>
+      <p class="text-text-secondary text-base leading-relaxed mb-6">{post.data.description}</p>
 
       <div class="flex items-center gap-4 text-text-muted text-sm border-b border-border-subtle pb-6">
         <time datetime={post.data.publishDate.toISOString()}>{formattedDate}</time>
@@ -59,21 +59,16 @@ const formattedDate = post.data.publishDate.toLocaleDateString('ko-KR', {
 
     <!-- 본문 -->
     <div class="prose prose-invert max-w-none
-      prose-headings:text-text-primary
-      prose-p:text-text-secondary prose-p:leading-relaxed
-      prose-a:text-accent-amber prose-a:no-underline hover:prose-a:underline
-      prose-strong:text-text-primary
-      prose-code:text-accent-warm prose-code:bg-white/[0.06] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
-      prose-pre:rounded-xl prose-pre:my-6
-      prose-blockquote:border-accent-amber/40 prose-blockquote:text-text-secondary
-      prose-hr:border-border-subtle
-      prose-img:rounded-xl
+      prose-img:rounded-xl prose-img:shadow-lg
+      prose-pre:rounded-xl prose-pre:my-6 prose-pre:border prose-pre:border-border-subtle
+      prose-table:text-sm
+      prose-li:my-0.5
     ">
       <Content />
     </div>
 
     <!-- 푸터 네비게이션 -->
-    <div class="mt-12 pt-8 border-t border-border-subtle">
+    <div class="mt-14 pt-8 border-t border-border-subtle">
       <a
         href={`${base}posts`}
         class="text-text-secondary hover:text-accent-amber transition-colors duration-200 text-sm"
