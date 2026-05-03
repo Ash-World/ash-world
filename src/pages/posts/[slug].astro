@@ -6,10 +6,18 @@ import { SITE } from '../../config/site.config';
 
 export async function getStaticPaths() {
   const posts = await getCollection('posts', ({ data }) => !data.draft);
-  return posts.map((post) => ({ params: { slug: post.slug }, props: { post } }));
+  const sorted = posts.sort((a, b) => b.data.publishDate.getTime() - a.data.publishDate.getTime());
+  return sorted.map((post, i) => ({
+    params: { slug: post.slug },
+    props: {
+      post,
+      prevPost: sorted[i + 1] ?? null,
+      nextPost: sorted[i - 1] ?? null,
+    },
+  }));
 }
 
-const { post } = Astro.props;
+const { post, prevPost, nextPost } = Astro.props;
 const { Content } = await post.render();
 
 const base = SITE.nav.links[0].href;
@@ -22,7 +30,21 @@ const formattedDate = post.data.publishDate.toLocaleDateString('ko-KR', {
 ---
 
 <BaseLayout title={post.data.title} description={post.data.description}>
-  <article class="max-w-2xl mx-auto px-6 py-14">
+  <article class="max-w-5xl mx-auto px-2 sm:px-4 py-10">
+
+    <!-- 뒤로가기 -->
+    <div class="mb-8">
+      <a
+        href={`${base}posts`}
+        class="inline-flex items-center gap-1.5 text-text-muted hover:text-accent-amber transition-colors duration-200 text-sm"
+      >
+        <svg class="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+          <path fill-rule="evenodd" d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z"/>
+        </svg>
+        모든 포스트
+      </a>
+    </div>
+
     <!-- 헤더 -->
     <header class="mb-10">
       <div class="flex flex-wrap gap-2 mb-5">
@@ -69,12 +91,65 @@ const formattedDate = post.data.publishDate.toLocaleDateString('ko-KR', {
 
     <!-- 푸터 네비게이션 -->
     <div class="mt-14 pt-8 border-t border-border-subtle">
+
+      <!-- 이전/다음 포스트 -->
+      {(prevPost || nextPost) && (
+        <div class="grid grid-cols-2 gap-4 mb-8">
+
+          <!-- 이전 포스트 (더 오래된 글) -->
+          <div>
+            {prevPost ? (
+              <a
+                href={`${base}posts/${prevPost.slug}`}
+                class="group flex flex-col gap-1 p-4 rounded-xl border border-border-subtle hover:border-border-hover hover:bg-white/[0.03] transition-all duration-200"
+              >
+                <span class="text-xs text-text-muted flex items-center gap-1">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
+                    <path fill-rule="evenodd" d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z"/>
+                  </svg>
+                  이전 포스트
+                </span>
+                <span class="text-sm font-medium text-text-secondary group-hover:text-accent-amber transition-colors duration-200 line-clamp-2">
+                  {prevPost.data.title}
+                </span>
+              </a>
+            ) : <div />}
+          </div>
+
+          <!-- 다음 포스트 (더 최신 글) -->
+          <div>
+            {nextPost ? (
+              <a
+                href={`${base}posts/${nextPost.slug}`}
+                class="group flex flex-col gap-1 p-4 rounded-xl border border-border-subtle hover:border-border-hover hover:bg-white/[0.03] transition-all duration-200 text-right"
+              >
+                <span class="text-xs text-text-muted flex items-center justify-end gap-1">
+                  다음 포스트
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
+                    <path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/>
+                  </svg>
+                </span>
+                <span class="text-sm font-medium text-text-secondary group-hover:text-accent-amber transition-colors duration-200 line-clamp-2">
+                  {nextPost.data.title}
+                </span>
+              </a>
+            ) : <div />}
+          </div>
+
+        </div>
+      )}
+
+      <!-- 목록으로 -->
       <a
         href={`${base}posts`}
-        class="text-text-secondary hover:text-accent-amber transition-colors duration-200 text-sm"
+        class="inline-flex items-center gap-1.5 text-text-muted hover:text-accent-amber transition-colors duration-200 text-sm"
       >
-        ← 모든 포스트 보기
+        <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
+          <path fill-rule="evenodd" d="M2 2.5A.5.5 0 0 1 2.5 2h11a.5.5 0 0 1 0 1H3v9.5a.5.5 0 0 1-1 0v-10zm3 3A.5.5 0 0 1 5.5 5h7a.5.5 0 0 1 0 1h-7A.5.5 0 0 1 5 5.5zm0 3A.5.5 0 0 1 5.5 8h5a.5.5 0 0 1 0 1h-5A.5.5 0 0 1 5 8.5z"/>
+        </svg>
+        모든 포스트 보기
       </a>
     </div>
+
   </article>
 </BaseLayout>
