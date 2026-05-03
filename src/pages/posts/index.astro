@@ -1,8 +1,6 @@
 ---
 import { getCollection } from 'astro:content';
 import BaseLayout from '../../components/layout/BaseLayout.astro';
-import PostCard from '../../components/post/PostCard.astro';
-import TagPill from '../../components/common/TagPill.astro';
 import { SITE } from '../../config/site.config';
 
 const allPosts = await getCollection('posts', ({ data }) => !data.draft);
@@ -10,51 +8,241 @@ const sortedPosts = allPosts.sort(
   (a, b) => b.data.publishDate.getTime() - a.data.publishDate.getTime()
 );
 
-// 태그 빈도 집계
+// 연도 목록 (내림차순)
+const years = [...new Set(sortedPosts.map((p) => p.data.publishDate.getFullYear()))].sort(
+  (a, b) => b - a
+);
+
+// 태그 빈도 집계 (빈도순)
 const tagCounts = sortedPosts
   .flatMap((p) => p.data.tags)
   .reduce<Record<string, number>>((acc, tag) => {
     acc[tag] = (acc[tag] ?? 0) + 1;
     return acc;
   }, {});
+const sortedTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]);
 
 const base = SITE.nav.links[0].href;
 ---
 
 <BaseLayout title="Posts" description="모든 포스트 목록">
-  <div class="max-w-screen-2xl mx-auto px-8 py-12">
-    <div class="mb-6">
-      <h1 class="text-3xl font-bold text-text-primary mb-2">Posts</h1>
-      <p class="text-text-secondary">총 {sortedPosts.length}개의 글</p>
+  <div class="max-w-screen-xl mx-auto px-8 py-12">
+
+    <!-- 헤더 -->
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold text-text-primary mb-1">Posts</h1>
+      <p class="text-text-secondary text-sm">
+        총 <span id="visible-count">{sortedPosts.length}</span>개의 글
+      </p>
     </div>
 
-    <!-- 태그 필터 -->
-    <div class="flex flex-wrap gap-2 mb-10">
-      {Object.entries(tagCounts)
-        .sort((a, b) => b[1] - a[1])
-        .map(([tag, count]) => (
-          <TagPill tag={tag} href={`${base}tags/${tag}`} count={count} />
-        ))}
-    </div>
+    <!-- 필터 영역 -->
+    <div class="mb-10 rounded-2xl border border-border-subtle bg-bg-article overflow-hidden">
+
+      <!-- 접기/펼치기 헤더 -->
+      <button
+        id="filter-toggle"
+        class="w-full flex items-center justify-between px-5 py-3 text-sm text-text-secondary hover:text-text-primary transition-colors duration-200"
+        aria-expanded="true"
+        aria-controls="filter-body"
+      >
+        <span class="flex items-center gap-2">
+          <svg class="w-3.5 h-3.5 opacity-60" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M1 3.5A.5.5 0 0 1 1.5 3h13a.5.5 0 0 1 0 1H1.5A.5.5 0 0 1 1 3.5zm2 3A.5.5 0 0 1 3.5 6h9a.5.5 0 0 1 0 1h-9A.5.5 0 0 1 3 6.5zm2 3A.5.5 0 0 1 5.5 9h5a.5.5 0 0 1 0 1h-5A.5.5 0 0 1 5 9.5z"/>
+          </svg>
+          필터
+          <span id="filter-summary" class="text-text-muted text-xs"></span>
+        </span>
+        <svg
+          id="filter-chevron"
+          class="w-4 h-4 transition-transform duration-200"
+          viewBox="0 0 16 16" fill="currentColor"
+        >
+          <path d="M7.646 4.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1-.708.708L8 5.707l-5.646 5.647a.5.5 0 0 1-.708-.708l6-6z"/>
+        </svg>
+      </button>
+
+      <!-- 필터 본문 — grid-template-rows 트릭으로 높이 애니메이션 -->
+      <div id="filter-body" class="grid border-t border-border-subtle" style="grid-template-rows: 1fr; transition: grid-template-rows 0.28s ease;">
+        <div class="overflow-hidden">
+          <div class="space-y-3 px-5 pb-5 pt-4">
+
+      <!-- 연도 필터 -->
+      <div class="flex items-center gap-3 flex-wrap">
+        <span class="text-xs text-text-muted font-medium w-8 shrink-0">연도</span>
+        <div class="flex flex-wrap gap-2">
+          <button
+            class="filter-year tag-pill active"
+            data-year="all"
+          >전체</button>
+          {years.map((year) => (
+            <button
+              class="filter-year tag-pill"
+              data-year={String(year)}
+            >{year}</button>
+          ))}
+        </div>
+      </div>
+
+      <!-- 구분선 -->
+      <div class="border-t border-border-subtle"></div>
+
+      <!-- 태그 필터 -->
+      <div class="flex items-start gap-3 flex-wrap">
+        <span class="text-xs text-text-muted font-medium w-8 mt-1 shrink-0">태그</span>
+        <div class="flex flex-wrap gap-2">
+          <button
+            class="filter-tag tag-pill active"
+            data-tag="all"
+          >전체</button>
+          {sortedTags.map(([tag, count]) => (
+            <button
+              class="filter-tag tag-pill"
+              data-tag={tag}
+            >
+              {tag}
+              <span class="ml-1 opacity-50 text-xs">({count})</span>
+            </button>
+          ))}
+        </div>
+      </div>
+          </div><!-- /inner padding wrapper -->
+        </div><!-- /overflow-hidden -->
+      </div><!-- /filter-body -->
+    </div><!-- /filter wrapper -->
 
     <!-- 포스트 목록 -->
-    {sortedPosts.length === 0 ? (
-      <div class="glass-card p-12 text-center">
-        <p class="text-text-muted">아직 작성된 포스트가 없습니다.</p>
-      </div>
-    ) : (
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-        {sortedPosts.map((post) => (
-          <PostCard
-            slug={post.slug}
-            title={post.data.title}
-            description={post.data.description}
-            publishDate={post.data.publishDate}
-            tags={post.data.tags}
-            cover={post.data.cover}
-          />
-        ))}
-      </div>
-    )}
+    <div id="posts-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+      {sortedPosts.map((post) => {
+        const year = post.data.publishDate.getFullYear();
+        const tagsStr = post.data.tags.join(',');
+        const formattedDate = post.data.publishDate.toLocaleDateString('ko-KR', {
+          year: 'numeric', month: 'long', day: 'numeric',
+        });
+        const href = `${base}posts/${post.slug}`;
+
+        return (
+          <article
+            class="post-card glass-card overflow-hidden group flex flex-col"
+            data-year={String(year)}
+            data-tags={tagsStr}
+          >
+            {post.data.cover && (
+              <a href={href}>
+                <img
+                  src={post.data.cover}
+                  alt={post.data.title}
+                  class="w-full h-40 object-cover opacity-75 group-hover:opacity-95 transition-opacity duration-300"
+                  loading="lazy"
+                />
+              </a>
+            )}
+
+            <div class="p-5 flex flex-col flex-1">
+              <!-- 태그 -->
+              <div class="flex flex-wrap gap-1.5 mb-3">
+                {post.data.tags.slice(0, 3).map((tag) => (
+                  <span class="text-xs px-2 py-0.5 rounded-full bg-white/[0.06] border border-border-subtle text-text-muted">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+
+              <!-- 제목 -->
+              <a href={href} class="block flex-1">
+                <h2 class="text-base font-semibold text-text-primary mb-2 group-hover:text-accent-amber transition-colors duration-200 line-clamp-2 leading-snug">
+                  {post.data.title}
+                </h2>
+                <p class="text-text-secondary text-sm line-clamp-2 leading-relaxed">
+                  {post.data.description}
+                </p>
+              </a>
+
+              <!-- 날짜 -->
+              <time class="text-text-muted text-xs mt-4 block" datetime={post.data.publishDate.toISOString()}>
+                {formattedDate}
+              </time>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+
+    <!-- 결과 없음 -->
+    <div id="empty-state" class="hidden glass-card p-12 text-center mt-4">
+      <p class="text-text-muted">조건에 맞는 포스트가 없습니다.</p>
+    </div>
+
   </div>
 </BaseLayout>
+
+<script>
+  const yearBtns   = document.querySelectorAll<HTMLButtonElement>('.filter-year');
+  const tagBtns    = document.querySelectorAll<HTMLButtonElement>('.filter-tag');
+  const cards      = document.querySelectorAll<HTMLElement>('.post-card');
+  const countEl    = document.getElementById('visible-count');
+  const emptyEl    = document.getElementById('empty-state');
+  const toggleBtn  = document.getElementById('filter-toggle');
+  const filterBody = document.getElementById('filter-body');
+  const chevron    = document.getElementById('filter-chevron');
+  const summaryEl  = document.getElementById('filter-summary');
+
+  let activeYear = 'all';
+  let activeTag  = 'all';
+  let isOpen     = true;
+
+  // grid-template-rows: 1fr ↔ 0fr 토글 (고정값 없이 자연스러운 높이 애니메이션)
+  toggleBtn?.addEventListener('click', () => {
+    if (!filterBody) return;
+    isOpen = !isOpen;
+    filterBody.style.gridTemplateRows = isOpen ? '1fr' : '0fr';
+    chevron?.classList.toggle('rotate-180', !isOpen);
+    toggleBtn.setAttribute('aria-expanded', String(isOpen));
+  });
+
+  function updateSummary() {
+    if (!summaryEl) return;
+    const parts: string[] = [];
+    if (activeYear !== 'all') parts.push(activeYear);
+    if (activeTag  !== 'all') parts.push(activeTag);
+    summaryEl.textContent = parts.length ? `(${parts.join(' · ')})` : '';
+  }
+
+  function applyFilter() {
+    let count = 0;
+    cards.forEach((card) => {
+      const cardYear = card.dataset.year ?? '';
+      const cardTags = (card.dataset.tags ?? '').split(',');
+
+      const yearMatch = activeYear === 'all' || cardYear === activeYear;
+      const tagMatch  = activeTag  === 'all' || cardTags.includes(activeTag);
+
+      if (yearMatch && tagMatch) {
+        card.style.display = '';
+        count++;
+      } else {
+        card.style.display = 'none';
+      }
+    });
+
+    if (countEl) countEl.textContent = String(count);
+    if (emptyEl) emptyEl.classList.toggle('hidden', count > 0);
+    updateSummary();
+  }
+
+  yearBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      activeYear = btn.dataset.year ?? 'all';
+      yearBtns.forEach((b) => b.classList.toggle('active', b.dataset.year === activeYear));
+      applyFilter();
+    });
+  });
+
+  tagBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      activeTag = btn.dataset.tag ?? 'all';
+      tagBtns.forEach((b) => b.classList.toggle('active', b.dataset.tag === activeTag));
+      applyFilter();
+    });
+  });
+</script>
