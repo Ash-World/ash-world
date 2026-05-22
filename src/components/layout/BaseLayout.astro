@@ -23,11 +23,12 @@ const {
 
 const pageTitle = title === SITE.title ? title : `${title} | ${SITE.title}`;
 const canonicalURL = new URL(Astro.url.pathname, SITE.url);
+const siteOrigin = new URL(SITE.url).origin;
 const ogImageURL = ogImage
   ? ogImage.startsWith('http')
     ? ogImage
-    : `${SITE.url}${ogImage}`
-  : `${SITE.url}/images/og-default.png`;
+    : `${siteOrigin}${ogImage}`
+  : `${siteOrigin}/ash-world/images/backgrounds/hero-bg.jpg`;
 ---
 
 <!doctype html>
@@ -55,6 +56,7 @@ const ogImageURL = ogImage
     <meta name="twitter:image" content={ogImageURL} />
 
     <title>{pageTitle}</title>
+    <slot name="head" />
     <ViewTransitions />
   </head>
   <body>
