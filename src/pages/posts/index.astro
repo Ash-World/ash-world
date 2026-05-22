@@ -191,7 +191,10 @@ const base = SITE.nav.links[0].href;
   let activeTag  = 'all';
   let isOpen     = true;
 
-  // grid-template-rows: 1fr ↔ 0fr 토글 (고정값 없이 자연스러운 높이 애니메이션)
+  // URL ?tag= 파라미터로 초기 필터 적용
+  const urlTag = new URLSearchParams(location.search).get('tag');
+  if (urlTag) activeTag = urlTag;
+
   toggleBtn?.addEventListener('click', () => {
     if (!filterBody) return;
     isOpen = !isOpen;
@@ -245,4 +248,10 @@ const base = SITE.nav.links[0].href;
       applyFilter();
     });
   });
+
+  // URL ?tag= 파라미터가 있으면 초기 필터 적용
+  if (urlTag) {
+    tagBtns.forEach((b) => b.classList.toggle('active', b.dataset.tag === activeTag));
+    applyFilter();
+  }
 </script>

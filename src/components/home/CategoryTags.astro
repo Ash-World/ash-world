@@ -14,7 +14,7 @@ const base = SITE.nav.links[0].href;
   {SITE.categories.map((cat) => (
     <TagPill
       tag={cat}
-      href={cat === 'All' ? `${base}posts` : `${base}tags/${cat}`}
+      href={cat === 'All' ? `${base}posts` : `${base}posts?tag=${encodeURIComponent(cat)}`}
       active={cat === activeCategory}
     />
   ))}
