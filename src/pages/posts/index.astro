@@ -193,98 +193,100 @@ function readingTime(body: string | undefined): number {
 </BaseLayout>
 
 <script>
-  const yearBtns   = document.querySelectorAll<HTMLButtonElement>('.filter-year');
-  const tagBtns    = document.querySelectorAll<HTMLButtonElement>('.filter-tag');
-  const cards      = document.querySelectorAll<HTMLElement>('.post-card');
-  const countEl    = document.getElementById('visible-count');
-  const emptyEl    = document.getElementById('empty-state');
-  const toggleBtn  = document.getElementById('filter-toggle');
-  const filterBody = document.getElementById('filter-body');
-  const chevron    = document.getElementById('filter-chevron');
-  const summaryEl  = document.getElementById('filter-summary');
+  function initFilter() {
+    const yearBtns   = document.querySelectorAll<HTMLButtonElement>('.filter-year');
+    const tagBtns    = document.querySelectorAll<HTMLButtonElement>('.filter-tag');
+    const cards      = document.querySelectorAll<HTMLElement>('.post-card');
+    const countEl    = document.getElementById('visible-count');
+    const emptyEl    = document.getElementById('empty-state');
+    const toggleBtn  = document.getElementById('filter-toggle');
+    const filterBody = document.getElementById('filter-body');
+    const chevron    = document.getElementById('filter-chevron');
+    const summaryEl  = document.getElementById('filter-summary');
 
-  let activeYear  = 'all';
-  const activeTags = new Set<string>();
-  let isOpen      = true;
+    let activeYear  = 'all';
+    const activeTags = new Set<string>();
+    let isOpen      = true;
 
-  // URL ?tag= 파라미터로 초기 필터 적용
-  const urlTag = new URLSearchParams(location.search).get('tag');
-  if (urlTag) activeTag = urlTag;
+    // URL ?tag= 파라미터로 초기 태그 설정
+    const urlTag = new URLSearchParams(location.search).get('tag');
+    if (urlTag) activeTags.add(urlTag);
 
-  toggleBtn?.addEventListener('click', () => {
-    if (!filterBody) return;
-    isOpen = !isOpen;
-    filterBody.style.gridTemplateRows = isOpen ? '1fr' : '0fr';
-    chevron?.classList.toggle('rotate-180', !isOpen);
-    toggleBtn.setAttribute('aria-expanded', String(isOpen));
-  });
-
-  function updateSummary() {
-    if (!summaryEl) return;
-    const parts: string[] = [];
-    if (activeYear !== 'all') parts.push(activeYear);
-    activeTags.forEach((t) => parts.push(t));
-    summaryEl.textContent = parts.length ? `(${parts.join(' · ')})` : '';
-  }
-
-  function applyFilter() {
-    let count = 0;
-    cards.forEach((card) => {
-      const cardYear = card.dataset.year ?? '';
-      const cardTags = (card.dataset.tags ?? '').split(',');
-
-      const yearMatch = activeYear === 'all' || cardYear === activeYear;
-      const tagMatch  = activeTags.size === 0 || cardTags.some((t) => activeTags.has(t));
-
-      if (yearMatch && tagMatch) {
-        card.style.display = '';
-        count++;
-      } else {
-        card.style.display = 'none';
-      }
+    toggleBtn?.addEventListener('click', () => {
+      if (!filterBody) return;
+      isOpen = !isOpen;
+      filterBody.style.gridTemplateRows = isOpen ? '1fr' : '0fr';
+      chevron?.classList.toggle('rotate-180', !isOpen);
+      toggleBtn.setAttribute('aria-expanded', String(isOpen));
     });
 
-    if (countEl) countEl.textContent = String(count);
-    if (emptyEl) emptyEl.classList.toggle('hidden', count > 0);
-    updateSummary();
-  }
+    function updateSummary() {
+      if (!summaryEl) return;
+      const parts: string[] = [];
+      if (activeYear !== 'all') parts.push(activeYear);
+      activeTags.forEach((t) => parts.push(t));
+      summaryEl.textContent = parts.length ? `(${parts.join(' · ')})` : '';
+    }
 
-  function syncTagButtons() {
-    tagBtns.forEach((b) => {
-      if (b.dataset.tag === 'all') {
-        b.classList.toggle('active', activeTags.size === 0);
-      } else {
-        b.classList.toggle('active', activeTags.has(b.dataset.tag ?? ''));
-      }
+    function applyFilter() {
+      let count = 0;
+      cards.forEach((card) => {
+        const cardYear = card.dataset.year ?? '';
+        const cardTags = (card.dataset.tags ?? '').split(',');
+
+        const yearMatch = activeYear === 'all' || cardYear === activeYear;
+        const tagMatch  = activeTags.size === 0 || cardTags.some((t) => activeTags.has(t));
+
+        if (yearMatch && tagMatch) {
+          card.style.display = '';
+          count++;
+        } else {
+          card.style.display = 'none';
+        }
+      });
+
+      if (countEl) countEl.textContent = String(count);
+      if (emptyEl) emptyEl.classList.toggle('hidden', count > 0);
+      updateSummary();
+    }
+
+    function syncTagButtons() {
+      tagBtns.forEach((b) => {
+        if (b.dataset.tag === 'all') {
+          b.classList.toggle('active', activeTags.size === 0);
+        } else {
+          b.classList.toggle('active', activeTags.has(b.dataset.tag ?? ''));
+        }
+      });
+    }
+
+    yearBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        activeYear = btn.dataset.year ?? 'all';
+        yearBtns.forEach((b) => b.classList.toggle('active', b.dataset.year === activeYear));
+        applyFilter();
+      });
     });
-  }
 
-  yearBtns.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      activeYear = btn.dataset.year ?? 'all';
-      yearBtns.forEach((b) => b.classList.toggle('active', b.dataset.year === activeYear));
-      applyFilter();
+    tagBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tag = btn.dataset.tag ?? '';
+        if (tag === 'all') {
+          activeTags.clear();
+        } else if (activeTags.has(tag)) {
+          activeTags.delete(tag);
+        } else {
+          activeTags.add(tag);
+        }
+        syncTagButtons();
+        applyFilter();
+      });
     });
-  });
 
-  tagBtns.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const tag = btn.dataset.tag ?? '';
-      if (tag === 'all') {
-        activeTags.clear();
-      } else if (activeTags.has(tag)) {
-        activeTags.delete(tag);
-      } else {
-        activeTags.add(tag);
-      }
-      syncTagButtons();
-      applyFilter();
-    });
-  });
-
-  // URL ?tag= 파라미터가 있으면 초기 필터 적용
-  if (urlTag) {
-    tagBtns.forEach((b) => b.classList.toggle('active', b.dataset.tag === activeTag));
+    // 초기 상태 적용 (URL 파라미터 포함)
+    syncTagButtons();
     applyFilter();
   }
+
+  document.addEventListener('astro:page-load', initFilter);
 </script>
