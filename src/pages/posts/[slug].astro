@@ -2,6 +2,7 @@
 import { getCollection } from 'astro:content';
 import BaseLayout from '../../components/layout/BaseLayout.astro';
 import TagPill from '../../components/common/TagPill.astro';
+import GiscusComments from '../../components/post/GiscusComments.astro';
 import { SITE } from '../../config/site.config';
 
 export async function getStaticPaths() {
@@ -29,7 +30,12 @@ const formattedDate = post.data.publishDate.toLocaleDateString('ko-KR', {
 });
 ---
 
-<BaseLayout title={post.data.title} description={post.data.description}>
+<BaseLayout
+  title={post.data.title}
+  description={post.data.description}
+  ogImage={post.data.cover}
+  ogType="article"
+>
   <article class="max-w-5xl mx-auto px-2 sm:px-4 py-10">
 
     <!-- 뒤로가기 -->
@@ -88,6 +94,9 @@ const formattedDate = post.data.publishDate.toLocaleDateString('ko-KR', {
     ">
       <Content />
     </div>
+
+    <!-- 댓글 -->
+    <GiscusComments />
 
     <!-- 푸터 네비게이션 -->
     <div class="mt-14 pt-8 border-t border-border-subtle">
