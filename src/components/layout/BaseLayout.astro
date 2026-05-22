@@ -9,15 +9,26 @@ interface Props {
   title?: string;
   description?: string;
   heroPage?: boolean;
+  ogImage?: string;
+  ogType?: 'website' | 'article';
 }
 
 const {
   title = SITE.title,
   description = SITE.description,
   heroPage = false,
+  ogImage,
+  ogType = 'website',
 } = Astro.props;
 
 const pageTitle = title === SITE.title ? title : `${title} | ${SITE.title}`;
+const canonicalURL = new URL(Astro.url.pathname, SITE.url);
+const siteOrigin = new URL(SITE.url).origin;
+const ogImageURL = ogImage
+  ? ogImage.startsWith('http')
+    ? ogImage
+    : `${siteOrigin}${ogImage}`
+  : `${siteOrigin}/ash-world/images/backgrounds/hero-bg.jpg`;
 ---
 
 <!doctype html>
@@ -26,8 +37,26 @@ const pageTitle = title === SITE.title ? title : `${title} | ${SITE.title}`;
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={description} />
+    <link rel="canonical" href={canonicalURL} />
     <link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL}favicon.svg`} />
+    <link rel="alternate" type="application/rss+xml" title={`${SITE.title} RSS Feed`} href={`${SITE.nav.links[0].href}rss.xml`} />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content={ogType} />
+    <meta property="og:url" content={canonicalURL} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImageURL} />
+    <meta property="og:site_name" content={SITE.title} />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={pageTitle} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImageURL} />
+
     <title>{pageTitle}</title>
+    <slot name="head" />
     <ViewTransitions />
   </head>
   <body>

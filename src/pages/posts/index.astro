@@ -23,6 +23,17 @@ const tagCounts = sortedPosts
 const sortedTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]);
 
 const base = SITE.nav.links[0].href;
+
+function readingTime(body: string | undefined): number {
+  if (!body) return 1;
+  const clean = body
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[[^\]]*\]\([^)]*\)/g, ' ');
+  const chars = clean.replace(/\s+/g, '').length;
+  return Math.max(1, Math.ceil(chars / 400));
+}
 ---
 
 <BaseLayout title="Posts" description="모든 포스트 목록">
@@ -119,6 +130,7 @@ const base = SITE.nav.links[0].href;
         const formattedDate = post.data.publishDate.toLocaleDateString('ko-KR', {
           year: 'numeric', month: 'long', day: 'numeric',
         });
+        const mins = readingTime(post.body);
         const href = `${base}posts/${post.slug}`;
 
         return (
@@ -158,10 +170,14 @@ const base = SITE.nav.links[0].href;
                 </p>
               </a>
 
-              <!-- 날짜 -->
-              <time class="text-text-muted text-xs mt-4 block" datetime={post.data.publishDate.toISOString()}>
-                {formattedDate}
-              </time>
+              <!-- 날짜 + 읽기 시간 -->
+              <div class="flex items-center gap-2 mt-4">
+                <time class="text-text-muted text-xs" datetime={post.data.publishDate.toISOString()}>
+                  {formattedDate}
+                </time>
+                <span class="text-text-muted text-xs opacity-50">·</span>
+                <span class="text-text-muted text-xs">{mins}분 읽기</span>
+              </div>
             </div>
           </article>
         );
@@ -187,9 +203,9 @@ const base = SITE.nav.links[0].href;
   const chevron    = document.getElementById('filter-chevron');
   const summaryEl  = document.getElementById('filter-summary');
 
-  let activeYear = 'all';
-  let activeTag  = 'all';
-  let isOpen     = true;
+  let activeYear  = 'all';
+  const activeTags = new Set<string>();
+  let isOpen      = true;
 
   // URL ?tag= 파라미터로 초기 필터 적용
   const urlTag = new URLSearchParams(location.search).get('tag');
@@ -207,7 +223,7 @@ const base = SITE.nav.links[0].href;
     if (!summaryEl) return;
     const parts: string[] = [];
     if (activeYear !== 'all') parts.push(activeYear);
-    if (activeTag  !== 'all') parts.push(activeTag);
+    activeTags.forEach((t) => parts.push(t));
     summaryEl.textContent = parts.length ? `(${parts.join(' · ')})` : '';
   }
 
@@ -218,7 +234,7 @@ const base = SITE.nav.links[0].href;
       const cardTags = (card.dataset.tags ?? '').split(',');
 
       const yearMatch = activeYear === 'all' || cardYear === activeYear;
-      const tagMatch  = activeTag  === 'all' || cardTags.includes(activeTag);
+      const tagMatch  = activeTags.size === 0 || cardTags.some((t) => activeTags.has(t));
 
       if (yearMatch && tagMatch) {
         card.style.display = '';
@@ -233,6 +249,16 @@ const base = SITE.nav.links[0].href;
     updateSummary();
   }
 
+  function syncTagButtons() {
+    tagBtns.forEach((b) => {
+      if (b.dataset.tag === 'all') {
+        b.classList.toggle('active', activeTags.size === 0);
+      } else {
+        b.classList.toggle('active', activeTags.has(b.dataset.tag ?? ''));
+      }
+    });
+  }
+
   yearBtns.forEach((btn) => {
     btn.addEventListener('click', () => {
       activeYear = btn.dataset.year ?? 'all';
@@ -243,8 +269,15 @@ const base = SITE.nav.links[0].href;
 
   tagBtns.forEach((btn) => {
     btn.addEventListener('click', () => {
-      activeTag = btn.dataset.tag ?? 'all';
-      tagBtns.forEach((b) => b.classList.toggle('active', b.dataset.tag === activeTag));
+      const tag = btn.dataset.tag ?? '';
+      if (tag === 'all') {
+        activeTags.clear();
+      } else if (activeTags.has(tag)) {
+        activeTags.delete(tag);
+      } else {
+        activeTags.add(tag);
+      }
+      syncTagButtons();
       applyFilter();
     });
   });
