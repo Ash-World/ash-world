@@ -207,6 +207,10 @@ function readingTime(body: string | undefined): number {
   const activeTags = new Set<string>();
   let isOpen      = true;
 
+  // URL ?tag= 파라미터로 초기 필터 적용
+  const urlTag = new URLSearchParams(location.search).get('tag');
+  if (urlTag) activeTag = urlTag;
+
   toggleBtn?.addEventListener('click', () => {
     if (!filterBody) return;
     isOpen = !isOpen;
@@ -277,4 +281,10 @@ function readingTime(body: string | undefined): number {
       applyFilter();
     });
   });
+
+  // URL ?tag= 파라미터가 있으면 초기 필터 적용
+  if (urlTag) {
+    tagBtns.forEach((b) => b.classList.toggle('active', b.dataset.tag === activeTag));
+    applyFilter();
+  }
 </script>
