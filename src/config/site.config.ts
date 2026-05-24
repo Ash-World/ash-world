@@ -29,6 +29,8 @@ export const SITE = {
     'RAG',
     'Agent',
     'Harness',
+    'Proactive-agent',
+    'Inner-thought',
   ],
 
   // 홈 페이지 섹션 문구
