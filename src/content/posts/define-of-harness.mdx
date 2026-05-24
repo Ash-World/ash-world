@@ -1,0 +1,99 @@
+---
+title: "Definition of Harness Engineering"
+description: "하네스, 하네스 엔지니어링이라고 많이 말하지만 정작 이게 뭐야? 라고하면 어떻게 얘기해야 할까?"
+publishDate: 2026-05-24
+tags: ["Research", "Agent", "Harness"]
+draft: false
+cover: "/ash-world/assets/def_of_harness.png"
+---
+
+## A. Harness의 기원
+
+가장 먼저 Harness라는 키워드를 사용한 사람은 누구일까?
+
+조사해보니 Hashicorp & Terraform의 창립자인 **Mitchell Hashimoto**가 26년 2월 초 Harness라는 용어를 사용하였고 이때 당시엔 `"에이전트가 실수할 때마다 다음엔 더 잘하길 바라지 말고, 다시는 그 실수를 못 하도록 환경을 엔지니어링하라”`는 프레이밍과 같이 대두되었다. 다만, 다양한 커뮤니티에서 Harness와 같은 맥락의 개념은 오고갔으며, 명확하게 자리잡은 것이 26년 2월초인 것이다. 
+
+그렇다면, Harness System은 무엇일까? 이를 정의하기 위해서는 과거의 변천사를 먼저 살펴볼 필요가 있다.
+
+과거에는 LLM Model의 높은 성능이 주목받았고, 그 후 짧게 지식의 실시간성을 보완할 RAG가 주목받았다. 이후 빠르게 동적으로 실행되는 Agent가 수면위로 올라오며 26년 4월 현재 Agent를 다루는 전체적인 인프라 시스템인 Harness System이 가장 주목받는 것이다. 
+
+즉, bottom-up의 방향을 따라간다고 볼 수 있으며 현재의 Harness System은 암묵적으로 Agent를 기반으로 하는 Harness System을 의미하며, 그 정의는 아래와 같이 정의할 수 있겠다.
+
+```bash
+  Harness = Model 그 자체를 제외한, Agent를 둘러싼 모든 환경
+```
+
+조금 더 풀어서 말하면, 모델의 추론 능력을 실제 production 환경에서 **신뢰성 있게, 반복 가능하게, 안전하게** 동작하도록 만드는 **환경, 제약, 피드백 루프의 집합**이다.  
+
+Model의 출력을 “제어하기 어려운 말”에 비유한다면, Harness(=굴레, 고삐)라는 표현과 같이 말을 사용자가 원하는 방향, 의도대로 제어하는 방법에 해당하는 것이다. 
+
+이는 단순히 Skills, Hook을 사용한다는 작은단위의 행동이 아닌 상위 개념에 더 부합하는 것이다.
+
+## B. Harness Engineering이란?
+
+A Section에서 우리는 Harness를 아래와 같이 정의하였다.
+
+> Harness란, LLM Model 그 자체를 제외하고 Agent를 둘러싼 모든 환경
+> 
+
+그렇다면, Harness Engineering은 어떤 작업을 의미하는 것일까?
+
+26년 4월 2일에 martinfowler에 작성된 [Birgitta의 포스트](https://martinfowler.com/articles/harness-engineering.html)에서는 Harness라는 컨셉 자체가 매우 광범위하며, 다양한 Agent 중 Coding Agents에 국한된 내용을 기술하고자 한다. 잘 설계된 Coding Agent 기반 Harness는 크게 2가지의 목표를 달성한다. 
+
+1. 에이전트가 처음부터 올바른 결과를 얻을 확률을 높이는 것
+2. 문제가 사람의 눈에 띄기 전에 최대한 많은 문제를 자체적으로 수정하는 피드백 루프를 제공하는 것이다. 
+
+궁극적으로 이는 검토 작업량을 줄이고 시스템 품질을 향상시키며, 그 과정에서 토큰 낭비를 줄이는 부가적인 이점을 제공하게 된다.
+
+![harness engineering diagram](/ash-world/assets/def_of_harness_01.png)
+
+다양한 개념이 하나의 figure에 서술되어 있는데, 청록색 box와 같이 **Agent가 수행하게 될 최소단위의 행동을 Components라 지칭**하겠다. 저자는 해당 그림에서 Harness의 구성요소를 범주화하였는데, 그 내용이 아래와 같다.
+
+- **Agent의 실행 시점 기준의 분류 : 주체가 Coding Agent**
+    - **FeedForward** : coding agent의 직접적인 실행(Execution) 전 확인하게 되는 components를 의미한다. 즉, Components에서 Agents의 순방향을 가진 행위를 의미한다.
+    - **FeedBack** : coding agent의 직접적인 실행(Execution) 후 확인하게 되는 components를 의미한다. 즉, Agents에서 Components의 역방향을 가진 행위를 의미한다.
+- **Components가 사용되는 시점에 따른 분류 : 주체가 Components**
+    - **Guides** : FeedForward를 제어하는 전체집합입니다. 에이전트의 행동을 예측하고 행동하기 전에 에이전트를 유도하는 것을 목표로 합니다. 가이드를 사용하면 에이전트가 첫 시도에서 좋은 결과를 낼 확률이 높아집니다.
+    - **Sensors** : FeedBack을 제어하는 전체집합입니다. 에이전트의 동작 후를 관찰 하고 자체 수정을 지원합니다. 특히 LLM(로컬 라이프사이클 관리)에서 사용하기에 최적화된 신호, 예를 들어 자체 수정 지침이 포함된 사용자 지정 린터 메시지 등을 생성할 때 매우 효과적입니다. 이는 일종의 프롬프트 주입 방식입니다
+- **Characteristic of implementation(= 구현방식에 따른 특징)에 의한 기준분류 : 주체가 Components**
+    - **Computational :** 결정론적이고 빠르며 CPU에서 실행됩니다. 테스트, 린터, 타입 검사기, 구조 분석 기능을 제공합니다. 실행 시간은 밀리초에서 초 단위이며 결과는 신뢰할 수 있습니다.
+    - **Inferential** : 의미 분석, AI 기반 코드 검토, "LLM을 심사위원으로 활용". 일반적으로 GPU 또는 NPU에서 실행됩니다. 속도가 느리고 비용이 많이 들며, 결과가 비결정적입니다.
+
+그에 대한 구현예시는 다음과 같다.
+
+![harness engineering implementation](/ash-world/assets/def_of_harness_02.png)
+
+팀원들과의 discussion과 위 자료를 포함한 다양한 레퍼런스를 참고해보았을 때 도출할 수 있는 사실은 **Harness라는 개념은 매우 광범위한데, 우리는 Coding Agents 기반의 Harness와 General한 Harness를 동일시하고 있다는 것이다.** 이는 **개념의 모호성을 스스로 증가시키고 있는 것**이며, 명확한 구분을 할 필요가 있다.
+
+## C. Harness Engineering의 접근법
+
+우리가 접근하는 것이 Coding Agents와 같은 부분적인 접근이 아니라면 Harness Engineering의 접근방식을 구체화하여 아래의 5-Layer 기반으로 바라보는 것을 제안한다.
+
+- 1-Layer : Architecture
+- 2-Layer : Identity & Guardrail
+- 3-Layer : Task Ability
+- 4-Layer : Context Strategy
+- 5-Layer : Stability & Observility
+
+각 Layer 단계에 대하여 설명해보겠다.
+
+### 1-Layer : Architecture
+
+
+### 2-Layer : Identity & Guardrail
+
+
+### 3-Layer : Task Ability
+
+
+### 4-Layer : Context Strategy
+
+
+### 5-Layer : Stability & Observility
+
+
+
+## Conclusion
+RAG, Agent, Harness에 이르기까지 우리는 너무나도 빠른 변화에 명확한 개념정의 및 이해없이 그저 보이는 모습에 입각하여 바라보고 있을지도 모른다.
+그것만으로 괜찮을 수 있으나, 정말 대상에 대하여 잘 사용하려면 근원적인 이해가 필수적으로 동반되어야 한다고 믿는다.
+현재 필자의 업무환경역시 말하는 바를 100% 충족시키지는 못하지만 그럼에도 불구하고 정확한 이해와 객관적인 비교사실을 바탕으로 명확하게 알아야 비로소 전문가라고 말할 수 있지 않을까 싶다.
