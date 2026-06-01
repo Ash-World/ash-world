@@ -1,0 +1,158 @@
+---
+title: "Auth.md based RBAC with Skill.md"
+description: "전통 RBAC는 AI 에이전트에 그대로 적용할 수 없다. skill:* 단일 스코프 + SKILL_REGISTRY 패턴으로 에이전트 환경의 확률론적 행위자 문제와 세션 중 권한 변경을 해결한 실험 기록."
+publishDate: 2026-05-29
+tags: ["Research", "Agent", "Harness"]
+draft: false
+cover: "/ash-world/assets/rbac_with_skill.png"
+---
+
+## Ⅰ. 과연 기존의 RBAC만이 해답일까?
+
+### ⅰ. 전통적인 RBAC의 전제
+
+전통적인 SW System에서 `RBAC(Role-Based Access Control)`는 명확한 전제 위에 설계되어 있기 마련이다.
+
+```
+User → Role → Permission → Resource
+```
+
+사용자에게 역할을 부여하고, 역할에 권한을 매핑하고, API 미들웨어가 요청마다 이를 검증한다. 이 모델이 잘 작동하는 이유는 **행위자가 결정론적**이기 때문이다. 코드는 항상 정해진 경로로 정해진 API를 호출한다. 
+일반적인 생성형 AI를 기반으로 하는 서비스 (Agent 기반의 서비스들이라고 보아도 무방하다)는 기존의 방법을 활용하는 경우가 대부분이다. 다만, 필자의 경우 기존의 방식을 적용할 수 없는 환경에서 프로젝트를 하게되어 
+Agent Runtime 환경에서 RBAC를 적용하는 방법을 고민하게 되었다.
+
+
+### ⅱ. 에이전트 환경에서도 적합할까?
+
+위에서 언급했다시피 대부분의 서비스는 설계부터 적합하게끔 구조를 잡는다. 하지만 세상에 100%는 없는법. 
+그렇지 못한 환경도 분명히 존재할 수 있기 때문에 이부분에 대한 리서치를 해보려고 한다.
+리서치에 앞서 에이전트 환경에서 발생할 수 있는 권한관리가 필요한 부분을 몇가지 follow-up 해보자.  
+
+**Option 1: 에이전트 행위자가 LLM이다**
+
+에이전트의 행위자는 LLM이다. 이말은 즉슨 확률론적으로 도구호출한다는말이다. 바꿔 말하면 모델의 성능에 따라 같은 지시문이더라도 호출하는 도구목록이 달라질 수 있고
+이는 곧 같은 권한 구성이어도 실행환경에 따라 얼마든지 다른 도구를 선택할 수 있다는 말이다. 
+더 심각한 건 **허용된 도구를 안 쓰거나, 없는 도구를 있다고 가정하고 호출**할 수 있다는 점이다. 
+즉, Agent 실행환경에서의 권한관리는 기존방식에 비해 더 다양한 요소를 고려해야 한다.
+
+```
+- 전통 RBAC: "권한이 있으면 접근한다" (코드는 무조건 실행)
+- 에이전트:  "권한이 있어도 LLM이 쓰지 않을 수 있다" (확률론적)
+           "권한이 없어도 LLM이 시도할 수 있다" (할루시네이션)
+```
+
+**Option 2: 세션 중 권한이 변경된다**
+
+전통 RBAC에서 권한 변경은 접근세션의 재발급을 의미한다. 일반적으로 다시 로그인하면 새 토큰에 새 권한이 실리는데 에이전트는 구동환경이 다르다. 
+장시간 작업 중 권한에 대한 변동, 긴급한 권한 회수등 예기치 못한 상황이 발생할 수 있다. 
+
+**Option 3: 오케스트레이터가 서브에이전트에 권한을 위임한다**
+
+전통적인 시스템에서 마이크로서비스 간 권한 전파는 서비스 토큰이나 JWT claim으로 처리하지만 
+Agent Orchestration에서는 이러한 구조가 존재하지 않는다. 그렇다고 해서 Orchestrator가 가진 모든 권한을 서브에이전트에게 그대로 넘기면 **최소 권한 원칙(Principle of Least Privilege)** 이 깨진다.
+
+### ⅲ. 그렇다면?
+
+위와 같은 환경속에서 Agent 실행환경에 적합한 RBAC 적용가능성을 고민하던 찰나 WorkOS의 [auth.md 프로토콜(RFC 9728)](https://workos.com/blog/auth-md)의 레퍼런스를 찾아 유사한 방식으로 검증실험을 해보고자 한다.
+
+---
+
+## Ⅱ. 실험 설계
+
+기술 스택은 주요하게`deepagents ≥ 0.6.3`, `langchain-anthropic`, `langgraph`을 기반으로 하며 사용 모델은 `claude-haiku-4-5-20251001`로 통일하였다.
+6개의 역할에 따라 각각 접근할 수 있는 skill을 다르게 하여 30개의 시나리오를 구축후 실험하였다.
+
+```
+Skills (skill:* 전용):
+  skill:research         | research_skill 실행 권한 (내부 tool 포함)
+  skill:data_analysis    | data_analysis_skill 실행 권한 (내부 tool 포함)
+  skill:notification     | notification_skill 실행 권한 (내부 tool 포함)
+  skill:reporting        | reporting_skill 실행 권한 (내부 tool 포함)
+  skill:code_review      | code_review_skill 실행 권한 (내부 tool 포함)
+
+Role-based skill scope:
+  admin                | ['skill:code_review', 'skill:data_analysis', 'skill:notification', 'skill:reporting', 'skill:research']
+  analyst              | ['skill:data_analysis', 'skill:reporting', 'skill:research']
+  analyst_restricted   | ['skill:data_analysis', 'skill:research']
+  developer            | ['skill:code_review', 'skill:notification', 'skill:research']
+  viewer               | ['skill:research']
+  guest                | []
+```
+
+### ⅰ. 아키텍처
+
+전통 RBAC가 Pre-define방식으로 체크한다면, 이 설계는 **에이전트 생성 시점에 도구 목록 자체를 권한에 따라 필터링**한다. 그렇기에 LLM은 접근 불가한 도구를 아예 볼 수 없다.
+
+```python
+class AuthContext:
+    def __init__(self, user_id, role, auth_md=None):
+        self.scopes = set(auth_md["roles"].get(role, []))
+
+    def can_access_skill(self, skill_scope: str) -> bool:
+        return skill_scope in self.scopes
+
+```
+
+```python
+def create_agent(auth_ctx: AuthContext):
+    allowed_tools = [
+        SKILL_REGISTRY[scope]["tool"]
+        for scope in SKILL_REGISTRY
+        if auth_ctx.can_access_skill(scope)
+    ]
+    if not allowed_tools:
+        return None  # guest: 에이전트 자체를 생성하지 않음
+    return create_deep_agent(llm, allowed_tools)
+```
+
+
+### ⅱ. 평가지표 정의
+
+RBAC에 따른 통과여부는 생각보다 단순하다. "권한 있는 사용자가 알맞은 리소스에 접근했는가?"인데, 에이전트 환경은 한 레이어가 더 필요하다. "LLM이 실제로 올바르게 행동했는가?"
+
+따라서, 3 가지 Pass Rate를 정의했다.
+
+- **Static Pass Rate** = 역할에 허용된 스킬 수 / 전체 스킬 수 (결정론적, LLM 비용 없음)
+- **Exec Pass Rate** = LLM이 실제로 호출한 스킬 수 / 역할에 허용된 스킬 수 ← **에이전트 환경에서만 의미 있는 지표**
+- **Total Pass Rate** = "허용된 것은 호출, 차단된 것은 미호출" 일관성
+
+이중 Exec Pass Rate가 핵심이라 할 수 있겠다. 에이전트의 경우 LLM이 허용된 도구를 선택적으로 쓰기 때문에, "권한 부여 = 실행 보장"이 성립하지 않기 때문이다.
+운영계에서는 위와 같은 항목 역시 고려해야겠으나 현재 실험에서는 검증여부를 빠르게 판단하기 위해 `One Skill, One Tool Call Only`의 규칙을 기반으로 설계 및 진행 하였다.
+
+### ⅲ. 결과
+
+![역할별 스킬 접근 통과율 분석](/ash-world/assets/auth_skill_pass_rate.png)
+
+| Role | Static Pass Rate | Exec Pass Rate | Total Pass Rate |
+|------|------------------|----------------|-----------------|
+| admin | 100% (5/5) | 100% (5/5) | **100%** |
+| analyst | 60% (3/5) | 100% (3/3) | **100%** |
+| analyst_restricted | 40% (2/5) | 100% (2/2) | **100%** |
+| developer | 60% (3/5) | 100% (3/3) | **100%** |
+| viewer | 20% (1/5) | 100% (1/1) | **100%** |
+| guest | 0% (0/5) | — | **100%** |
+
+**"차단도 정답"이라는 에이전트 고유의 개념**
+
+guest 역할의 Total Pass Rate도 100%다. 전통 RBAC에서 차단은 당연한 결과이지 "정답"을 측정하는 개념이 아니다. 에이전트에서는 다르다. LLM이 없는 도구를 호출하려 시도(할루시네이션)하지 않는 것 자체가 검증 포인트다. guest 시나리오에서 에이전트를 생성하지 않고 (`return None`), LLM이 없는 도구를 호출하지 않는 것이 100% 기록의 의미다.
+
+---
+
+## Ⅳ. 결론
+
+### 기존 RBAC 방식대비 에이전트 환경의 변화 요약
+
+| 항목 | 전통 RBAC | 에이전트 RBAC (Exp 1) |
+|------|-----------|----------------------|
+| 행위자 | 결정론적 코드 | 확률론적 LLM |
+| 권한 체크 위치 | API 미들웨어 | 에이전트 생성 시점 (도구 목록 필터링) |
+| "권한 있음 = 실행" | 성립 | 성립하지 않음 |
+| 권한 변경 | 세션 재발급 | 에이전트 재생성 |
+| 차단의 의미 | 당연한 결과 | 검증 포인트 (할루시네이션 방어) |
+
+
+---
+
+## My Insights 
+
+`auth.md`를 단순히 "에이전트용 인증 파일"로 보지 않고 **접근관리를 위한 권한설게 파일**로 다루면, 전통적인 RBAC으로 전제한 결정론적 구조에서 더 확장하여 유동적인 방식인 agent 환경에서도 안전한 권한관리가 가능할 것으로 보인다.  
