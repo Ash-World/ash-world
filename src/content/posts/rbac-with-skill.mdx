@@ -155,4 +155,9 @@ guest 역할의 Total Pass Rate도 100%다. 전통 RBAC에서 차단은 당연�
 
 ## My Insights 
 
-`auth.md`를 단순히 "에이전트용 인증 파일"로 보지 않고 **접근관리를 위한 권한설게 파일**로 다루면, 전통적인 RBAC으로 전제한 결정론적 구조에서 더 확장하여 유동적인 방식인 agent 환경에서도 안전한 권한관리가 가능할 것으로 보인다 : [Experiments Code](https://github.com/ash-hun/Personal_Research/blob/main/deepagent-auth-based-tool-routing/skills_auth_routing.ipynb)
+개인적으로 권한분리 및 관리의 경우 굉장히 strict한 방식을 적용할 수밖에 없다고 생각한다. 
+당연하게도 실패하면 안되기 때문이다. 단 한번이라도 실패하게 되면 운영계에서는 매우 크리티컬한 상황까지 이어지기 마련이다. 
+따라서, 필자는 위의 방식도 그러한 생각이 반영된 것이다. 단순하에 auth.md를 system prompt 마냥 넣어서 llm(혹은 agent)보고 판단해~ 가 아닌, 최소한의 경계성을 일종의 rule로 가진채 agent의 사용환경에 맞게끔 정리한 것에 불과하다.
+물론, 고도화의 항목도 현저히 남아있다. 향후 Long-Running Agent가 산업계에 널리 쓰이게 될 시대에 Agent 동작 도중 권한의 변경이라던가, 기타 다양한 방싣과 시나리오를 고려할 필요가 있다. (기존의 전통적인 RBAC은 이에 대한 한계가 명확하다.)
+  
+실험에 사용한 Jupyter Notebook을 첨부하니 많은 활용바란다 : [Experiments Code](https://github.com/ash-hun/Personal_Research/blob/main/deepagent-auth-based-tool-routing/skills_auth_routing.ipynb)
