@@ -1,9 +1,9 @@
 ---
 title: "[Paper Review] Gemini Embedding 2: A Native Multimodal Embedding Model from Gemini"
 description: "논문리뷰 : https://arxiv.org/pdf/2605.27295"
-publishDate: 2026-06-27
+publishDate: 2026-06-08
 tags: ["Research", "Embedding", "Review"]
-draft: false
+draft: true
 cover: "/ash-world/assets/emb_gemini_cover.png"
 ---
 
@@ -30,12 +30,34 @@ cover: "/ash-world/assets/emb_gemini_cover.png"
 image, text, video, and document modalities](/ash-world/assets/emb_gemini_01.png)
 
 - Large Language Models as Text Embedders
+    - text embedding model은 순수한 인코더 모델(e.g. BERT, RoBERTa)에서 시작해서 decoder model 및 large language model 백본으로 까지 이어진다.
+    - BGE 또는 E5와 같은 모델들은 semantic search, clustering, classification 등의 downstream task를 task-specific prefix를 통해 단일 모델로 하여금 효과적으로 통합한다.
+    - Gecko model과 같이 2-step distillation pipeline을 이용한 학습으로 high-efficiency retriever를 훈련할 수 있다.
+    - NV-Embed은 Contrastive Learning과 non-retrieval synthetic data를 사용하여 decoder-only model을 general embedder로 변환함으로써 MMTEB LeaderBoard에서 강력한 성능을 달성했다.
+    - Gemini Embedding은 Gemini Model의 Pre-training을 통해 합성 데이터를 활용하고 다국어 작업에 대한 우수한 일반화 성능을 보여 MMTEB 리더보드에서 최첨단 성능을 입증했다.
 - Evoltion of Multimodal Embedders
+    - 초기 Multimodal Embedding의 패러다임은 CLIP 및 ALIGN과 같은 dual-tower model에서 볼 수 있듯이 간단한 image-text pair에 대한 제한적인 contrastive learning에 의존하는 한계가 있었다.
+    - 오늘날 해당 분야는 text, code, image, structured document, audio 및 video를 unified & continuous semantic space으로 매핑할 수 있는 아키텍처로 나아가고 있다.
+    - SAIL-Embedding은 멀티모달 표현을 산업계에서 추천되는 환경(e.g. seq-item predict, 실효성 있는 분야를 의미함)에 원활하게 적용될 수 있는 방법론을 사용한다.
+    - Amazon Nova MME와 SigLIP 2는 cross-modal retrieval workflow를 위해 서로 다른 modality를 통합하는 데 강력한 성능을 입증했다.
 - Architectural Adaptations Bidirectional Attention
+    - Casual LLM은 generative task에 뛰어나지만, 본질적으로 unidirection attention mechansism은 임베딩을 생성할 때 불필요한 사항이 많습니다.
+    - 이러한 한계를 극복하기 위해 MoCa, MM-Embed와 같은 몇 가지 혁신적인 프레임워크가 등장했다.
 - Adaptation to Enterprise Use Cases
+    - 기업 및 에이전트 요구 사항이 Massive Context로 확장되고 문서에 점점 더 집중됨에 따라, 최신 embedder는 방대한 정보 페이로드를 효율적으로 수집해야 한다.
+    - 모델은 Complexity PDF, Chart 및 Table을 embedding하기 위해 특수화된 시각-문서 처리(예: 비전 인코더의 타일 혼합)를 활용하며, 이는 RAG 시스템의 품질이 청킹 전략 등과 같은 외부 파이프라인의 다양한 부분에 의존하게 만든다.
 
 
 ## 3. Multimodal Gemini Embedding
+### 3.1 Model Architecture
+
+
+### 3.2 Training Objective
+
+
+### 3.3 Recipe
+
+
 
 
 
@@ -54,6 +76,10 @@ image, text, video, and document modalities](/ash-world/assets/emb_gemini_01.png
 ## 7. Conclusion
 
 
+## Reference
+
+- [Gemini Embedidng](https://arxiv.org/pdf/2503.07891)
+- [Gecko](https://arxiv.org/pdf/2403.20327)
 
 ---  
 
