@@ -1,0 +1,330 @@
+---
+title: "Hermes Agent 분석기 - Conversation Loop"
+description: "hermes agent의 conversation loop가 어떤방식으로 동작하는지 분석해보자."
+publishDate: 2026-06-03
+tags: ["Research", "Agent", "Harness"]
+draft: false
+cover: "/ash-world/assets/hermes__01.png"
+---
+
+
+>  hermes agent 2026.06.03. 날짜 기준으로 분석하였습니다!
+
+`Hermes Agent`가 최근 화제인데요. 어떻게 사용하는지 활용사례, 사용 시나리오는 많이 나오는데 정작 아키텍쳐 분석을 하는 사람들은 없어서 한번 해보려고 합니다. 
+예전에도 말했지만 제가 생각하는 fundamental(=본질)은 내부 원리를 알아야만 비로소 정확히 아는 것이고 빠르게 변화하는 시대일수록 더 본질을 알아야 한다고 믿습니다ㅎㅎ
+
+
+## 01. Conversation Loop 아키텍쳐
+
+hermes agent(이하 편의상 hermes라 하겠다..!)에서는 Conversation Loop를 도는데, 이때 conversation이라고 표기하는 단위가 일반적인 단위와 다르다. 
+보편적으로 1회 유지되는 Chat Session 혹은 드물게 One-Turn의 dialogue를 말하지만 hermes 에서는 `1회의 model 호출`을 구분단위로 한다. (조금 더 작은 단위로 구분하더라)  
+이 부분이 특이한데, 처음에는 budget이라 하면 과금정책인줄 알았다. 그래서 hermes는 일반적이지 않은 기준으로 Conversation 기준을 잡는구나 싶었는데. 자세히 보니 max_iterations를 budget으로 구분하는 것 같다.
+자세한 내용은 해당 section에서 참고하셔라.
+
+hermes에서 수행되는 대화의 단위는 다음과 같이 볼 수 있고, 향후 포스트에서도 아래 명칭으로 고정하여 사용하겠다.
+```
+Chat Session
+ └─ Turn 1:  user_msg → run_conversation() → Final_response
+ └─ Turn 2:  user_msg → run_conversation() → Final_response
+ └─ Turn 3:  ...
+       │
+       └─ 단일 Turn 안에서 일어나는 일:
+            CALL API #1 (모델 호출) → tool 실행
+            CALL API #2 (모델 호출) → tool 실행
+            CALL API #3 (모델 호출) → 최종 텍스트 답변 → Break
+```
+
+위와 같이 구성된 대화단위 중 최소단위인 Conversation Loop를 단계별로 정리하면 다음과 같다.
+```
+0단계 — Reset Turn State
+1단계 — Messages Seeds 
+2단계 — Check Loop Condition
+3단계 — Loop Contents (Interrupt, Cost Budget + grace, Call LLM Model with tool_calls, Finally Response)
+4단계 — Check Budget Limit
+5단계 — Making Response
+```
+
+각 단계에 대하여 알아보자!
+
+## 02. Conversation Loop 세부단계
+### 02-1. Reset Turn State
+`Reset Trun State` 단계는 매턴마다 수행하는 단계로 해당 턴의 시작직후 이전턴의 영향을 제거하는 단계이다.
+
+```
+agent._interrupt_requested = False
+agent._budget_grace_call = False
+agent._invalid_tool_retries = 0
+agent._invalid_json_retries = 0
+agent._empty_content_retries = 0
+agent._thinking_prefill_retries = 0
+agent._post_tool_empty_retried = False
+agent._tool_guardrail_halt_decision = None
+agent.iteration_budget = IterationBudget(agent.max_iterations)
+```
+
+위와 같은 항목들을 체크하는데, hermes에서 사용되는 AIAgent 객체는 여러 턴에 걸쳐 재사용된다. 
+이때 상태값들은 생성자에서 최초 한 번 세팅되지만, 하나의 turn이 끝나도 세팅되었던 값들이 초기화되지 않는다.
+만약 이 값들을 리셋하지 않으면 가령 지난 턴에서 "JSON 2번 깨졌던" 기록이 새로운 턴까지 이어질 수 있는 context rot 현상이 발생한다. 
+결국 안정적이고 지속가능한 llm의 호출응답을 위해 항상 상태값을 refresh 해준다고 볼 수 있다.
+
+그렇다면 reset되는 상태값을 알아보자.
+
+#### 02-1-1. Interrupt/Control Flag
+
+```python
+_interrupt_requested = False # 사용자 stop 신호. Interrupt Check 읽음
+_budget_grace_call = False # "정해진 Budget을 다 썼어도 최소 한 번 더 호출을 허용"하는 일회성 면제.
+```
+
+위 상태값들은 전체 converstaion loop 자체를 끊거나 한 번 봐주는 제어를 위한 상태값 플래그이다.
+- `_interrupt_requested = False`
+      - 사용자가 stop 또는 새로운 메시지를 보냈다는 외부 신호가 있을 때 해당 flag가 바뀐다. 루프가 아니라 바깥(다른 스레드)에서 True로 세팅된다.
+      - 매 conversation loop에서 시작점에서 해당 flag를 검사하고 True면 모델 호출 전에 즉시 break(= INTERRUPTED)를 건다.
+      - 도구실행에 대한 배치 도중 인터럽트되면 남은 도구를 실행하지 않고 "cancelled" 결과로 채운다.(= 모든 tool_call에 결과가 1:1 대응해야 하므로)
+두 지점이 필요한 이유: 모델 호출 직전 차단(루프 앞)과 도구 배치 중간 차단(실행 함수 내부)은 시점이 달라 둘 다 검사해야 합니다.
+
+- `_budget_grace_call = False`
+      - conversation loop 과정에서 예산을 다 썼어도 딱 한 번 더 호출 허용조건을 탐지하는 플래그이다.
+      - 해당 플래그는 예산이 막 소진된 순간에도 모델이 마무리 답변을 낼 기회를 주는 안전장치이다.
+      - 여기서 말하는 예산은 IterationBudget 인스턴스를 의미한다. 토큰 예산이나 비용 예산이 아닌, "모델 또는 도구를 몇 번 호출(iteration)할 수 있느냐"를 세는 반복 횟수 카운터를 말한다. (이부분이 필자도 헷갈렷다,, ㅎㅎ)
+
+#### 02-1-2. Self-Retry Counter
+
+```python
+_invalid_tool_retries = 0 # 환각 도구명 누적 횟수 (3회↑ → partial 종료)
+_invalid_json_retries = 0 # 깨진 JSON 인자 누적 횟수 (3회 silent 재시도)
+```
+
+위 상태값들은 모델이 잘못된 출력을 냈을 때, N회까지 스스로 고치게 유도하되, 사전정의한 횟수를 넘으면 막는역할을 한다.
+- `_invalid_tool_retries`
+      - 자가보정 우선시도 : `_repair_tool_call` 이라는 변수값이 있는데, 해당 값을 활용해 오타/유사면을 실제 도구명으로 자동교정 시도한다. 여기서 고쳐지만 해당 변수카운터를 건드리지 않는다. (이때, 보정실패시 해당 값 +1을 한다.)
+      - N회 미만 : assistant 메시지를 기록한 뒤, 각 tool_call에 대해 에러 결과를 messages에 주입하고 continue 한다 : `Tool 'xxx' does not exist. Available tools: <전체 목록>`의 고정적인 PROMPT를 주입하여 모델로 하여금 정상적인 tool 호출이 되도록 반복 수행한다.
+      - N회 이상 : 모델에게 여러번 알려줬는데도 N번째까지 환각이 일어나면, 해당 모델은 스스로 못 고친다고 판단하고 루프를 끊는다. 즉 정상 답변 없이(final_response=None, completed=False), 사유는 INVALID_TOOL로 명시하고, 그래도 거기까지의 대화 기록(messages)은 보존한 채 끊는 것이다.
+- `_repair_tool_call`
+      - 원본은 agent_runtime_helpers.repair_tool_call에 해당 상태값이 있다. 다양한 단계를 거쳐 동작한다.
+      - 모델(특히 Claude 계열)이 같은 도구를 미묘하게 다른 표기로 뱉는다 : 대소문자, 구분자(- vs _), CamelCase, 그리고 _tool 접미사를 멋대로 붙이는 케이스. 원본 hermes-agent의 실제 버그 리포트(#14784)에도 관련된 이슈가 존재했다. (= TodoTool_tool, Patch_tool, BrowserClick_tool이 전부 "Unknown tool"로 떨어지던 문제)
+      - 1~4단계를 우선 진행하고 5단계까지 수행한다. 즉, `_repair_tool_call` 이 우선체크, `_invalid_tool_retries` 는 이후에만 수행한다.
+      - 5단계는 아래와 같이 구성된다.
+            1. 소문자 직접 매칭
+                  - name.lower()
+                  - E.g.) TodoTool → todotool? (valid에 있으면 채택)
+            2. 정규화 _norm
+                  - 소문자 + -/공백 → _
+                  - E.g.) browser-click → browser_click
+            3. CamelCase → snake _camel_snake	
+                  - 대문자 앞에 _ 삽입 후 소문자
+                  - E.g.) TodoTool → todo_tool
+            4. _tool 접미사 제거 (_strip_tool_suffix)
+                  - _tool/-tool/tool 꼬리 제거, 최대 2회
+                  - E.g.) TodoTool_tool → TodoTool → todo
+            5. Fuzzy 매칭
+                  - difflib.get_close_matches(cutoff=0.7)
+                  - E.g.) serch → search (오타, 유사도 0.7보다 클 때만)
+- `_invalid_json_retries`
+      - tool call된 arguments의 문자열이 JSON 파싱에 실패하는 트리거에 해당한다.
+      - `_invalid_json_retries`는 도구 인자 문자열에 `json.loads`가 실제로 실패할 때만 실행된다.
+
+#### 02-1-3. Empty-Recovery Ladder
+
+```python
+_empty_content_retries = 0 # 빈 응답 재시도 (최대 3회)
+_thinking_prefill_retries = 0 # thinking-only 응답 prefill 이어쓰기 (최대 2회)
+_post_tool_empty_retried = False # 도구 실행 후 빈 응답일 때 nudge (1회만)
+```
+
+위 상태값들은 모델의 핵심응답(빈 텍스트 / thinking만 있는 응답)이 없는 경우를 도출하였을 때, 상황별로 다른 복구 시도를 어떻게 진행할 지 관여하는 카운터이며 각각 다른 케이스에 대응한다.
+해당 상태값을 카운터 기반의 상태값으로 막는 이유는 복구 시도 자체역시 llm의 응답으로 진행하기 때문에 또다른 빈 응답을 부를 수 있기 때문이다. 즉, 천장이 없으면 infinite-loop가 되니 각 시도에 상한선을 두는 것이다.  
+  
+핵심 로직은 `<think>...</think>` 블록을 걷어내고 남는 실제 답변 텍스트가 있는지를 보는 것이다. 없으면 "empty response"로 보고 복구해야한다. 다만, 빈 응답에도 결이 다른 케이스가 있습니다:
+- 스트리밍이 중간에 끊겨 최종 객체만 빈 경우 (네트워크/스트림 문제)
+      - 이미 스트리밍으로 받아둔 텍스트를 최종 답으로 채택하고 break
+- `<think>...</think>`로 추론은 했는데 결론 텍스트를 안 뱉은 경우 (thinking-only)
+      - 그 thinking을 prefill로 메시지에 넣어 모델이 이어서 결론을 쓰게 함
+- 도구 결과를 받은 직후 멍하니 빈 응답을 낸 경우
+      - 가짜 (empty) assistant + "결과 처리하고 계속하라" user 메시지 주입 후 continue
+- 진짜로 아무것도 없는 경우
+      - "응답이 비었으니 다시 달라" user 메시지 주입 후 continue
+
+상태값에 대한 특징을 정리해보자.
+- `_post_tool_empty_retried`
+      - 도구를 실행한 결과를 넣었는데, 바로 다음 모델 호출이 빈 응답을 낸 상황이며 발동 조건이 아래 셋 다 맞아야 한다 :
+      ```python
+      if (_last_role == "tool"                      # 직전 메시지가 도구 결과이고
+            and not agent._post_tool_empty_retried # 아직 nudge 안 했고
+            and not _has_inline_thinking):         # thinking도 없는 (진짜 멍한) 경우
+      ```
+      - 핵심은 "넛지(nudge)"인데, 여기서 nudge란 [CoT_streeing](https://github.com/Marker-Inc-Korea/COT_steering)과 동일한 매커니즘이라고 볼 수 있다. 즉, 대화 기록(messages)에 인공 메시지를 슬쩍 끼워 넣어, 다음 모델 호출 때 모델이 인공메세지 내용을 인지하고 그에 맞는 내용을 이행하는 방식을 의미한다. 요컨데 모델에게 새 명령을 내리는 게 아니라, 대화의 맥락(context)을 조작해서 모델이 자연스럽게 다음 행동을 하도록 유도하는 방식을 말한다.
+      - 사용하는 NUDGE MESSAGE는 다음과 같다. `{"role":"user", "content":"Your last response was empty. Please process the tool results above and continue with the task."}`
+      - 단, 1회만 체크한다. 왜냐하면 도구 결과를 멍하게 보는 건 일시적 현상이라 보기 때문이다.
+
+- `_thinking_prefill_retries`
+      - `<think>...</think>`로 추론은 했는데 그 뒤에 응답을 안 뱉은 상황이고(thinking-only 응답) 발동 조건은 아래 2가지가 맞아야 한다 : 
+      ```python
+      _has_structured_thinking = agent._has_think_tags(final_text)  # <think> 태그가 있고
+      if _has_structured_thinking and agent._thinking_prefill_retries < 2:  # 아직 2회 미만이면
+      ```
+      - 핵심원리는 "prefill continuation"이다. 해당방식은 prefill이 모델 자신의 thinking을 그대로 assistant 메시지로 되돌려넣어 모델이 자기 사고의 뒤를 이어서 결론을 쓰게 만드는 방식을 말한다. 
+      - 주입하는 메시지는 고정 문구가 아니라 모델이 방금 낸 thinking 응답 자체다.
+      - 단, 최대 2회만 시도하는데 추론은 이미 끝났으니 결론만 나오면 되기 때문이며, 2번 이어붙여도 결론을 못 내면 thinking 자체가 막힌 것으로 판단한다.
+- `_empty_content_retries`
+      - `<think>...</think>` 블록을 다 걷어내도 진짜 아무것도 없는 빈 응답 상황에 해당 상태값이 사용되며 발동 조건은 아래 3가지가 맞아야 한다 :
+      ```python
+      _truly_empty = not agent._strip_think_blocks(final_text).strip()                    # think 걷어내도 빈 텍스트이고
+      _prefill_exhausted = _has_structured_thinking and agent._thinking_prefill_retries >= 2
+      if _truly_empty and (not _has_structured_thinking or _prefill_exhausted)            # thinking이 없거나, 있어도 prefill 2회 소진했고
+            and agent._empty_content_retries < 3:                                         # 아직 3회 미만이면
+      ```
+      - 기존과 동일한 "넛지(nudge)"를 활용하는데, user 메시지 하나만 끼워 넣어 "비었으니 다시 달라"고 요청하는 매커니즘이다.
+      - 주입하는 메시지는 고정 문구인데 `{"role":"user", "content":"Your last response was empty. Please provide a response."}`를 넣는다.
+
+
+#### 02-1-4. Guardrails
+
+```python
+_tool_guardrail_halt_decision = None # 도구 HALT 결정 객체
+```
+
+위 상태값은 도구를 실행하려다 안전 가드레일(guardrail)에 걸려서 턴 전체를 멈춰야 한다"는 결정을 담아두는 플래그 값이다.  
+여기서 사용되는 가드레일은 도구가 실제로 실행되기 직전에 가로채서 "이 호출을 허용할지/막을지" 판정하는 정책 함수를 말한다. 이는 AIAgent에 주입되는 교체 가능한 hook이다.
+```python
+guardrail: Optional[Callable[[ToolCall], Optional[GuardrailDecision]]] = None
+```
+
+— ToolCall 하나를 받아서 아래와 같은 분기를 처리한다:
+      - None을 반환 → "이 도구 호출 괜찮음, 그냥 실행해"와 같은 flow
+      - GuardrailDecision을 반환 → "이 호출 위험함, 멈춰야 함" (그 이유를 객체에 담아서) 와 같은 flow
+- Guardrails Lifecycle
+      - turn 시작시 초기화 : 새 턴마다 None(=아직 아무 위반 없음)으로 리셋한다.
+      ```python
+      agent._tool_guardrail_halt_decision = None
+      ```
+      - 도구 실행 루프 내부 : `_execute_tool_calls`가 도구들을 하나씩 실행하는데, 각 도구를 실행하기 전에 가드레일을 먼저 통과시킨다
+      ```python
+      if self._guardrail is not None:
+            decision = self._guardrail(tc)
+            if decision is not None:                       # 위반 발생!
+                  self._tool_guardrail_halt_decision = decision   # ← 상자에 결정을 담고
+                  messages.append(
+                        ToolResult(tc.id, tc.name,
+                        f"[Tool '{tc.name}' halted by guardrail: {decision.code}]",
+                        is_error=True).to_message()        # 도구 결과로 "막혔음" 기록
+                  )
+                  return                                     # ← 즉시 함수 탈출 (이후 도구들도 실행 안 함)
+      ```
+      - 호출 직후 바깥 루프 : `_execute_tool_calls`가 끝나고 돌아오자마자, 루프는 상자를 확인한다.
+      ```python
+      if agent._tool_guardrail_halt_decision is not None:
+            decision = agent._tool_guardrail_halt_decision
+            exit_reason = StopReason.GUARDRAIL_HALT
+            final_response = agent._toolguard_controlled_halt_response(decision)  # 사용자용 설명 생성
+            agent._vprint(f"⚠️ Tool guardrail halted {decision.tool_name}: {decision.code}")
+            messages.append({"role": "assistant", "content": final_response})
+            break    # ← 턴 루프 자체를 종료
+      ```
+- Controll HALT
+      - 위 단계들을 controll halt 매커니즘을 따라 수행되었다 볼 수 있는데, 전반적으로 아래와 같은 내용을 따른다.
+            - 발생한 응답을 객체 데이터로 만든다 (GuardrailDecision 객체)
+            - 남은 도구 실행을 안전하게 중단한다 (return)
+            - 대화 기록에 흔적을 남긴다 (tool 에러 + assistant 설명)
+            - 턴을 정상 경로로 종료한다 (break → 정규 ConversationResult 반환)
+            - 다른 종료 사유들(예산 소진, 빈응답 소진, 사용자 인터럽트)과 동일한 패턴으로 처리된다 (= "상태 신호를 세팅 → 루프가 확인 → 정해진 StopReason으로 정상 종료" 구조)
+
+
+## 03. My Insight for Conversation Loop
+hermes agent 분석 첫번째, **`Conversation Loop`** 분석을 진행해보았다.
+결과론적으로 정리하면 다음과 같이 크게 2가지로 구분할 수 있겠다.
+
+```python
+                         ┌──────────────────────────────────────┐
+   user_message ────────►│       messages : List[dict]          │◄─── conversation_history
+                         │     (루프 내내 자라나는 단 하나의 상태)      │
+                         └──────────────────────────────────────┘
+                              │  ▲                       │  ▲
+                  매 호출전체    │  │ assistant turn append │  │ tool result append
+                       전달    ▼  │                       ▼  │
+                    ┌──────────────────┐         ┌──────────────────┐
+                    │  ModelClient     │         │ _execute_tool_   │
+                    │  (LLM seam)      │         │  calls()         │
+                    │  → AssistantMsg  │         │  Tool: dict→str  │
+                    └──────────────────┘         └──────────────────┘
+                              │                           ▲
+                              └──  tool_calls 있으면 실행  ──┘
+
+   ▶ 결과:  ConversationResult(final_response, messages, api_calls, completed, turn_exit_reason, partial, interrupted, failed, error)
+```
+
+또한, 전체적인 loop의 controll flow는 다음과 같이 정리할 수 있겠다. (Claude Code를 활용해 정리하였으니 참고용으로만 봐주길 바란다!)
+
+```
+run_conversation(agent, user_message, history, stream_callback)
+│
+├─[0] 턴 상태 리셋  (retry 카운터들·flag·새 IterationBudget)
+├─[1] messages = history + {"role":"user", ...}
+│
+└─[2] ┌─ OUTER WHILE ─ (api_call_count < max_iters
+      │                   AND budget.remaining > 0) OR grace_call ────┐
+      │                                                               │
+      │ [2a] _interrupt_requested? ──yes──► break  INTERRUPTED        │
+      │ [2b] api_call_count++ ; budget.consume()                      │
+      │        grace_call이면 소비없이 통과 / 실패면 break BUDGET           │
+      │                                                               │
+      │ [2c] ┌─ INNER RETRY WHILE (retry < api_max_retries) ───────┐  │
+      │      │  response = model(messages, stream_callback) ◄─LLM  │  │
+      │      │                                                     │  │
+      │      │  ├ 예외      ─► fallback() 시도 / retry++ / 소진시      │  │
+      │      │  │              ERROR break                         │  │
+      │      │  ├ None(무효) ─► fallback() / retry++ / 소진시         │  │
+      │      │  │              return FAILED(Invalid API resp)     │  │
+      │      │  │                                                  │  │
+      │      │  └ finish_reason == "length" (잘림)                  │  │
+      │      │     ├(i)  thinking-budget 소진 ─► return THINKING    │  │
+      │      │     ├(ii) 텍스트 continuation 3회까지                  │  │
+      │      │     │      → 이어쓰기 프롬프트 append, outer 재호출       │  │
+      │      │     │      → 3회 초과시 return TRUNCATED(partial)     │  │
+      │      │     └(iii)tool-call 잘림 3회 (토큰 부스트 재호출)         │  │
+      │      │            → 초과시 return TRUNCATED                  │  │
+      │      │                                                     │  │
+      │      │  정상 응답 ─► break (inner 탈출)                       │  │
+      │      └─────────────────────────────────────────────────────┘ │
+      │  restart_with_length_continuation? ─► continue (outer)       │
+      │  assistant_message is None? ─► ERROR_NEAR_MAX break          │
+      │                                                              │
+      │ ┌───────────────────────────────────────────────────────┐    │
+      │ │ [2d] assistant_message.tool_calls 있음                 │    │
+      │ │   (1) 이름 검증/_repair_tool_call                       │    │
+      │ │        invalid ─► 에러 tool결과 되먹임 ─► continue        │    │
+      │ │                  (3회 연속 실패 ─► return INVALID_TOOL)  │    │
+      │ │   (2) JSON 인자 검증                                    │    │
+      │ │        ├ 잘림(} ] 안끝남) ─► return TRUNCATED            │    │
+      │ │        └ 무효 JSON ─► 3회 silent 재호출(continue)        │    │
+      │ │                      초과시 복구 tool결과 주입 continue    │    │
+      │ │   (3) post-call guardrail: cap delegate / dedupe      │    │
+      │ │   (4) content+tools fallback 캡처(housekeeping 판정)    │    │
+      │ │   (5) append(assistant) ─► _execute_tool_calls() ───────┼─┐ 도구 실행
+      │ │   (6) guardrail HALT? ─► break  GUARDRAIL_HALT        │ │ │
+      │ │   (7) truncated_tool_call_retries = 0                 │ │ │
+      │ │   (8) execute_code 전용 턴이면 budget.refund()           │ │ │
+      │ │   (9) should_compress? ─► _compress_context()         │ │ │
+      │ │       _persist_session() ─► continue (결과 재투입) ──────┼─┘
+      │ └───────────────────────────────────────────────────────┘   │
+      │                                                             │
+      │ ┌───────────────────────────────────────────────────────┐   │
+      │ │ [2e] tool_calls 없음 = 최종답변 후보                      │   │
+      │ │   think블록 제거 후 내용 없으면 → 빈응답 복구 사다리:           │   │
+      │ │     (i)   partial-stream 텍스트 사용 ─► break            │  │
+      │ │     (ii)  prior-turn housekeeping 재사용 ─► break       │  │
+      │ │     (iii) post-tool nudge 1회 ─► continue              │  │
+      │ │     (iv)  thinking-only prefill 2회 ─► continue        │  │
+      │ │     (v)   generic empty 재시도 3회 ─► continue           │  │
+      │ │   최종답변: think제거 → 스캐폴딩 pop → append(assistant)    │  │
+      │ │            ─► break  TEXT_RESPONSE (completed=True)   │  │
+      │ └───────────────────────────────────────────────────────┘  │
+      └────────────────────────────────────────────────────────────┘
+                              │ (break / 한도 소진으로 탈출)
+                              ▼
+      [3] final_response is None AND 한도소진?
+          ─► _handle_max_iterations() : 도구 빼고 "요약해줘" 1회 호출
+             → MAX_ITERATIONS, completed=True
+      [4] _persist_session() ; post_response_text() ; memory_skill_review()
+      [5] return ConversationResult(...)
+```
