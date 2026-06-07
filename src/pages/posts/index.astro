@@ -13,6 +13,9 @@ const years = [...new Set(sortedPosts.map((p) => p.data.publishDate.getFullYear(
   (a, b) => b - a
 );
 
+// 기본 선택 연도 (가장 최신 연도, 현재 2026)
+const defaultYear = years[0] !== undefined ? String(years[0]) : 'all';
+
 // 태그 빈도 집계 (빈도순)
 const tagCounts = sortedPosts
   .flatMap((p) => p.data.tags)
@@ -83,12 +86,12 @@ function readingTime(body: string | undefined): number {
         <span class="text-xs text-text-muted font-medium w-8 shrink-0">연도</span>
         <div class="flex flex-wrap gap-2">
           <button
-            class="filter-year tag-pill active"
+            class:list={['filter-year tag-pill', { active: defaultYear === 'all' }]}
             data-year="all"
           >전체</button>
           {years.map((year) => (
             <button
-              class="filter-year tag-pill"
+              class:list={['filter-year tag-pill', { active: defaultYear === String(year) }]}
               data-year={String(year)}
             >{year}</button>
           ))}
@@ -204,7 +207,9 @@ function readingTime(body: string | undefined): number {
     const chevron    = document.getElementById('filter-chevron');
     const summaryEl  = document.getElementById('filter-summary');
 
-    let activeYear  = 'all';
+    // 기본 선택 연도 — active 클래스가 붙은 연도 버튼에서 읽음
+    const defaultYearBtn = document.querySelector<HTMLButtonElement>('.filter-year.active');
+    let activeYear  = defaultYearBtn?.dataset.year ?? 'all';
     const activeTags = new Set<string>();
     let isOpen      = true;
 
