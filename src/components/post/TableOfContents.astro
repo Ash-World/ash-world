@@ -12,18 +12,21 @@
   const list = document.getElementById('toc-list');
 
   if (article && toc && list) {
-    const headings = article.querySelectorAll<HTMLElement>('h2, h3');
+    const headings = article.querySelectorAll<HTMLElement>('h2, h3, h4');
 
     if (headings.length > 0) {
       headings.forEach((h) => {
         const id = h.id;
         if (!id) return;
-        const isH3 = h.tagName === 'H3';
+        const indent =
+          h.tagName === 'H3' ? 'pl-3 text-xs'
+          : h.tagName === 'H4' ? 'pl-6 text-xs'
+          : '';
         const li = document.createElement('li');
         li.innerHTML = `<a
           href="#${id}"
           data-toc-id="${id}"
-          class="toc-link block leading-snug py-1 text-sm text-text-muted hover:text-text-primary transition-colors duration-150 ${isH3 ? 'pl-3 text-xs' : ''}"
+          class="toc-link block leading-snug py-1 text-sm text-text-muted hover:text-text-primary transition-colors duration-150 ${indent}"
         >${h.textContent}</a>`;
         list.appendChild(li);
       });
