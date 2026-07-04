@@ -1,0 +1,146 @@
+---
+title: "[Paper Review] Do Transformers Need Three Projections? Systematic Study of QKV Variants"
+description: "논문리뷰 : https://arxiv.org/pdf/2606.04032"
+publishDate: 2026-07-02
+tags: ["Research", "LLM", "Review"]
+draft: false
+cover: "/ash-world/assets/do_transformers_need_three_projects_cover.png"
+---
+
+Transformer의 attention은 당연하다는 듯 Query, Key, Value 세 개의 projection을 사용합니다.
+그런데 정말 **세 개가 모두 필요할까요?** 이 논문은 QKV 중 일부 projection을 서로 묶어(sharing) 개수를 줄이면 어떻게 되는지를 synthetic·vision·language modeling 전반에서 체계적으로 실험합니다.
+결론부터 말하면, **Key와 Value를 하나로 묶는(Q-K=V) 구성**이 KV cache를 절반으로 줄이면서 품질 손실은 거의 없어 on-device 추론에 특히 유용하다는 것입니다. 살펴봅시다!
+
+## Abstract
+- Transformer의 표준인 QKV(Query-Key-Value) attention에서, 세 projection 각각의 개별 기여와 일부를 생략했을 때의 영향은 아직 잘 이해되지 않았다.
+- 세 가지 **projection sharing 제약**을 체계적으로 평가한다.
+    - **Q=K-V** : query와 key를 공유(shared key-value가 아니라 shared *query-key*), value는 별도
+    - **Q-K=V** : query는 별도, key와 value를 공유(shared key-value)
+    - **Q=K=V** : 세 projection을 하나로 공유(single projection)
+- 뒤의 두 변형(Q=K-V, Q=K=V)은 **대칭(symmetric) attention map**을 만든다. 이를 완화하기 위해 2D positional encoding으로 비대칭성을 주입하는 방식($(X)^+$로 표기)도 탐구한다.
+- synthetic task, vision(MNIST·CIFAR·TinyImageNet·anomaly), language modeling(10B 토큰, 300M·1.2B 파라미터) 실험 결과, 제안 변형들이 **QKV와 동등하거나 때로 더 나은 성능**을 보였다.
+- 특히 language modeling에서 **Q-K=V는 perplexity 3.1% 손실만으로 KV cache를 50% 절감**한다. 또한 projection sharing은 head sharing(GQA/MQA)과 **상호 보완적**이어서, Q-K=V + GQA-4 = **87.5% cache 절감**, Q-MQA = **96.9% 절감**으로 on-device 추론을 가능케 한다.
+- Q-K=V가 잘 작동하는 이유는 key와 value가 유사한 표현 공간을 점유할 수 있고 attention이 low-rank 영역에서 작동하기 때문이며, 반대로 Q=K-V는 **attention의 방향성(directionality)을 깨뜨린다.**
+
+## 1. Introduction
+- Transformer는 언어 전용 도구에서 멀티모달 AI의 backbone으로 진화했고, context window가 커지고 실시간 추론 수요가 늘면서 연구의 초점은 **구조적 효율성**으로 이동했다.
+- 그럼에도 근본적인 구조적 질문이 남아 있다. **tripartite(Q, K, V) projection이 정말 필요한가?** CNN이나 SSM은 더 통합된 내부 표현을 쓰는 반면, Transformer는 토큰마다 세 개의 별개 표현을 유지하며 projection matrix 간 중복(redundancy)을 안고 있다.
+- 이를 규명하기 위해 학습되는 변환(transformation) 수를 점진적으로 줄이는 세 가지 **Projective Sharing** 아키텍처(Q=K-V / Q-K=V / Q=K=V)를 제안·평가한다.
+- 핵심 관찰 : projection 수를 줄이면 파라미터 수와 연산 부담이 줄지만 downstream 성능에 미치는 영향은 최소이며, 그 효과는 **task-dependent**하다. 예를 들어 대칭 attention($Q=K$)은 image classification 같은 **비순차(non-temporal)** task에 매우 효과적이지만, sequential task는 어느 정도의 **비대칭성**을 유지하는 것이 유리하다.
+
+### 1-1. Projection Sharing vs. Head Sharing
+- 본 연구는 GQA(Grouped Query Attention)·MQA(Multi-Query Attention)와는 **다른 축의 효율성**을 다룬다. GQA/MQA는 layer 내에서 **head를 공유**해 KV cache 크기를 줄이는 반면, 본 방법은 **projection matrix 자체를 공유**한다.
+- 두 전략은 직교(orthogonal)하므로, projection sharing과 head sharing을 결합하면 **복합적(compound) 이득**을 얻을 수 있다.
+
+### 1-2. 주요 기여
+- **체계적 평가** : synthetic reasoning, computer vision, LLM pre-training에 걸친 12개 task에서 projection-sharing 전략을 벤치마크.
+- **Cache 최적화** : **Q-K=V가 KV cache를 50% 절감**하면서 300M 모델에서 perplexity는 3.1%만 증가함을 입증.
+- **Scale 검증** : 1.2B 파라미터(~10B 토큰)에서도 상대적 품질 순위가 유지됨. MQA는 큰 규모에서 QKV와 near-parity(perplexity +1.06%)이면서 97% cache 절감.
+- **아키텍처 시너지** : projection sharing이 head sharing과 엄격히 보완적임을 보임. Q-GQA-4 = 87.5% 절감, Q-MQA = 96.9% 절감.
+- **통찰** : Q-K=V(shared representational space)는 작동하고 Q=K-V(방향성 파괴)는 실패하는 이유를 구조적으로 설명. 또한 QKV collapse 하에서 kernelized attention이 순수 recurrent 형태를 허용하여 linear attention을 adaptive observation을 가진 SSM의 특수 사례로 볼 수 있음을 부록에서 제시.
+
+## 2. Related Work
+- **표준 attention 배경** : 단일 head는 $A_h = \mathrm{Softmax}(\alpha Q_h K_h^\top) V_h$로 계산되며, $Q_h = XW_q,\ K_h = XW_k,\ V_h = XW_v$, scaling factor $\alpha = 1/\sqrt{d_k}$. multi-head에서는 $H$개 head를 병렬 계산 후 concat하여 최종 linear 변환한다.
+- **세 projection의 필요성에 대한 의문** : linear attention, kernel 기반 attention, attention-free 모델 등은 더 단순한 메커니즘으로 충분할 수 있음을 시사하지만 종종 표준 attention의 유연성을 희생한다. 본 연구는 attention을 **대체하기보다**, 핵심 메커니즘을 보존한 채 세 projection을 **통합할 수 있는지**를 묻는 보완적 접근이다.
+- **관련 선행 연구** : Borji(2023)에서 이 아이디어를 처음 제시했고 Kowsher 등(2025)도 유사 접근을 제안. DeepSeek-V2의 **MLA(Multi-Head Latent Attention)** 는 K·V를 latent vector로 압축해 cache에 저장·확장하는데, MLA는 더 풍부한 압축 표현을 위해 추가 projection 파라미터를 쓰는 반면 **Q-K=V는 단순한 hard equality 제약으로 cache 절감**을 달성한다는 점에서 다르다.
+
+## 3. Our Approach
+### 3-1. 제안하는 Projection-Shared Attention 변형
+- **Variant 1 : Q=K-V** — separate query projection을 제거하고 $Q = K$로 둔다.
+
+$$
+A = \mathrm{Softmax}(\alpha K K^\top) V
+$$
+
+- 이 구성은 **대칭 attention matrix** $K K^\top$를 만든다. graph neural net이나 relational reasoning처럼 방향 편향이 없는 편이 유리한 경우도 있으나, **causal 의존성이 필요한 sequential task에는 대칭성이 제약**이 된다. 이를 완화하려 2D positional encoding으로 비대칭성을 주입한 $(Q=K\text{-}V)^+$도 평가한다.
+- **Variant 2 : Q-K=V** — key와 value projection을 통합해 $V = K$로 둔다.
+
+$$
+A = \mathrm{Softmax}(\alpha Q K^\top) K
+$$
+
+- Q와 K가 독립적이므로 **비대칭 attention map을 보존**한다. key와 value가 표현을 공유하는 것은 language modeling에서 효과가 입증된 **weight tying**의 한 형태로 볼 수 있다.
+- **Variant 3 : Q=K=V** — 세 projection 모두를 하나로. $A = \mathrm{Softmax}(\alpha K K^\top) K$. Variant 1의 대칭 attention과 Variant 2의 표현 병목을 **모두** 결합한 가장 공격적인 단순화이다. 마찬가지로 $(Q=K=V)^+$도 평가.
+- **$(X)^+$ 변형의 범위** : 2D positional encoding은 **비causal 세팅(vision, synthetic)** 을 겨냥한 것으로, 대칭 attention이 주된 한계인 경우에 적용한다. causal LM은 이미 causal mask로 비대칭성이 강제되므로 $(X)^+$는 task-specific heuristic으로 취급한다.
+
+### 3-2. Projection Sharing과 Head Sharing의 결합
+- projection sharing($K=V$)과 head sharing(KV head 수 감소)은 **서로 다른 차원**을 다루므로 곱셈적으로 결합 가능하다.
+    - **Q-GQA-$g$** : $g$개 GQA group 각각에 $K=V$ 제약 적용 → $1 - \frac{g}{2H}$의 cache 절감
+    - **Q-MQA** : 단일 MQA head에 $K=V$ 제약 적용 → 거의 최대 cache 압축
+- 예: GQA-4 단독은 75% 절감, 여기에 $K=V$를 더한 **Q-GQA-4는 87.5%**, **Q-MQA는 96.9%** 절감으로 cache 기반 Transformer의 이론적 한계에 근접하면서도 실용적 품질을 유지한다.
+
+### 3-3. 연산·메모리 분석
+- projection 연산 복잡도(Table 1) : QKV는 $3nd^2$, Q-K-V/Q=K-V는 $2nd^2$(33% 절감), Q=K=V는 $nd^2$(1/3). $(X)^+$ 변형은 positional encoding에 $n^2 m$ 연산과 $m$ 파라미터를 추가하며 $nm < d^2$일 때 여전히 효율적.
+- **실질적 배포 이점** : 자기회귀 생성 시 Transformer는 과거 K·V를 cache한다. QKV와 Q=K-V는 K와 V를 **모두** cache해야 하지만, **Q-K=V·Q=K=V는 K만 cache**하면 된다(V를 K에서 재사용) → **50% KV cache 절감**. 이는 같은 메모리 예산에서 (1) 2배 긴 context, (2) 2배 높은 throughput, (3) 메모리 병목 배포에서 40~50% 서빙 비용 절감을 가능케 한다.
+- **설계 고려사항** : $KK^\top$는 각 토큰이 자기 자신에 강하게 attend하여 대각 성분이 큰 대칭 행렬을 만든다(diagonal dominance). 대각 성분을 나누거나 softmax temperature를 조절하는 정규화는 일관된 개선을 주지 못했고, Q-K=V는 $QK^\top$를 계산해 표준 Transformer의 off-diagonal 분포를 보존함으로써 이 문제를 자연스럽게 피한다.
+- **언제 어떤 변형을 쓸까**
+    - **Sequential/causal task(LM)** : Q-K=V가 최적의 품질-효율 trade-off (비대칭 attention 유지 + cache 절반).
+    - **Non-causal task(vision, set)** : Q-K=V 또는 Q=K=V로 충분, 필요 시 $(X)^+$로 방향 편향 주입.
+    - **자원 제약 배포** : Q-GQA 또는 Q-MQA로 cache 절감 극대화.
+
+## 4. Experiments and Results
+- synthetic reasoning(5 task), computer vision(6 task), language modeling(300M·1.2B, 10B 토큰) 세 도메인에서 평가. 아키텍처 효과를 분리하기 위해 hyperparameter를 맞추고 대부분 from scratch 학습.
+
+### 4-1. Synthetic tasks
+- 0~9 숫자 리스트에 대한 5개 task : **Reverse, Sort, Sub(9에서 빼기), Swap(전·후반 교환), Copy**. 단일 transformer encoder 사용.
+- 결과(Table 2, 평균 정확도) : QKV 0.851, **Q-K=V 0.850(동등)**, $(Q\text{-}K\text{=}V)^+$ **0.870(최고)**. 반면 Q=K=V는 0.780으로 뚜렷이 낮고 $(Q=K=V)^+$는 0.823. → positional 정보를 넣으면($(X)^+$) synthetic task 성능이 크게 향상.
+
+### 4-2. Vision tasks
+- MNIST, FashionMNIST, CIFAR-10/100, TinyImageNet(ViT, from scratch), set anomaly detection에서 평가.
+- 결과(Table 3) : $(Q\text{-}K\text{=}V)^+$ 평균 **0.772로 QKV(0.767)와 동등 이상**. Q=K=V는 단일 projection만 쓰고도 TinyImageNet에서 가장 빠른 수렴과 좋은 결과를 보임(에폭당 학습시간 QKV 40분 → Q=K=V 32분). → **비순차 task에서는 대칭/통합 표현이 오히려 효율적**.
+
+### 4-3. NLP tasks (핵심)
+- SlimPajama에서 300M·1.2B GPT-style 모델 학습(각 ~10B 토큰). attention projection만 다르고 나머지는 동일.
+- **300M 주요 결과(Table 4)** : Q-K=V가 명확한 승자.
+
+| Model | Val PPL | vs QKV | Cache | 비고 |
+| --- | --- | --- | --- | --- |
+| QKV (baseline) | 5.11 | — | — | |
+| **Q-K=V** | 5.27 | **+3.1%** | **50% ↓** | 최적 projection 변형 |
+| Q=K-V | 5.36 | +4.9% | 없음 | K·V 모두 cache → 이점 없음 |
+| Q=K=V | 6.41 | +25.4% | — | 권장하지 않음 |
+| GQA-4 | 5.15 | +0.7% | 75% ↓ | |
+| MQA | 5.19 | +1.5% | 93.8% ↓ | |
+| **Q-GQA-4** | 5.32 | +3.9% | **87.5% ↓** | 결합 |
+| **Q-MQA** | 5.36 | +4.8% | **96.9% ↓** | 결합 |
+
+- 놀랍게도 Q-K=V는 Q=K-V와 **동일한 파라미터·연산**임에도 더 나은 품질을 낸다 → **Value projection이 Query/Key만큼 중요하지 않다**는 직관에 반하는 결과. 반대로 Q=K-V는 K와 V를 모두 cache해야 해 **cache 이점이 없고**, Q=K=V는 단일 projection 강제로 **catastrophic 25.4% 손실**.
+- **파라미터·연산(Table 5,6)** : attention 파라미터는 25~50% 줄지만 attention은 전체의 ~30%라 전체 모델 절감은 완만(-6.9~-13.7%). 추론 MAC 절감도 5.4~10.8%로 완만(MLP·LM head가 큰 비중). **진짜 이점은 inference memory efficiency**.
+- **KV cache 분석(Table 7)** : 32k context에서 QKV·Q=K-V는 2.62GB, **Q-K=V는 1.31GB(50%↓)**, Q-GQA-4 0.33GB(87.5%↓), Q-MQA 0.08GB(96.9%↓). batch 32·32k 기준 VRAM을 83.9GB→41.9GB로 42GB 절감.
+- **Sequence length scaling(Table 8)** : context가 길수록 attention이 연산의 과반을 차지(4096 토큰에서 50%+)하므로, reduced-projection의 이득은 **긴 context일수록 커진다**.
+- **1.2B scaling(Table 9)** : 상대 순위 유지. Q-K=V는 +2.48%(300M의 3.1%보다 개선 → 큰 모델일수록 projection 제약에 더 강건할 가능성). MQA는 +1.06%로 near-parity(97% cache), Q-MQA +4.16%(98.5% cache, 67× 절감).
+- **Downstream 평가(Table 11)** : 5-shot 벤치마크(HellaSwag·PIQA·ARC·WinoGrande)에서 **Q-K=V는 cache를 절반으로 줄이고도 평균 정확도 손실 0.41%뿐**. Q-GQA-8은 오히려 QKV를 소폭 상회(36.72 vs 36.40). → **perplexity는 downstream 순위의 신뢰할 만한 예측자가 아니며**, 추론 메모리 절감이 실제 task 능력 손실 없이 얻어진다.
+- **배포 권장(Table 10)** : Cloud(품질)→GQA-4, Edge(균형)→Q-K=V, Edge(공격적)→Q-GQA-4, IoT/Mobile→Q-MQA, 학습 제약→Q-K=V.
+- **실사용 시나리오** : 32k context·동시 사용자 100명 코드 완성 모델 배포 시, QKV는 GPU 7대($14k/월) 필요, **Q-K=V는 4대($8k/월)** → 연 $72k(43%) 절감.
+
+## 5. Discussion and Conclusion & Limitations
+### 결론 핵심
+- **K=V projection은 효과적이고 확장 가능** : Q-K=V는 1.2B 규모에서 2.48% 손실로 50% cache 절감(300M의 3.1%보다 개선), head sharing과 직교·중첩 가능한 효율-품질 trade-off를 제공.
+- **왜 Q-K=V가 작동하는가** : (1) value의 역할이 흔히 생각하는 것보다 덜 본질적이고, (2) K=V 제약 시 **key가 value의 역할까지 흡수할 만큼 풍부**하기 때문. 학습된 행렬 분석 결과 K·V projection은 **cosine similarity 0.73**(전 layer 평균)과 유사한 effective rank(687 vs 702/1024)로 표현 중복을 보이는 반면, Q는 K와 0.42·V와 0.31로 **낮은 유사도를 유지**해 방향 attention에 필요한 비대칭성을 보존한다.
+- **왜 Q=K-V는 실패하는가** : $Q=K$는 **대칭 attention을 강제**해 causal LM에 필요한 방향성을 깨뜨린다(cache 이점도 없이 4.9% 품질 저하). Q=K=V는 두 병리를 결합해 25.4% catastrophic 저하.
+- **결합의 이점** : Q-GQA-8은 88% cache 절감에 3.08% 손실, Q-MQA는 98.5% 절감에 4.16% 손실 → projection·head sharing이 보완적 축에서 작동함을 확인. 다만 가장 공격적인 Q-MQA는 downstream 34.38%로 손실이 커, **Q-GQA 영역까지는 유용한 압축, 그 너머는 trade-off가 두드러진다**.
+
+### Limitations
+- 검증된 최대 규모는 **1.2B** 파라미터로, 7B 이상에서 Q-K=V의 저하 경향이 계속 개선될지는 미확인.
+- Q-K=V가 품질을 보존하는 이유에 대한 설명은 **형식적이라기보다 경험적(empirical)**.
+- 평가가 **최대 2048 토큰** 시퀀스로 제한되어 length extrapolation은 특성화하지 않음.
+- Q=V ablation은 제외(Q는 생성 시 cache되지 않고, 그 addressing 역할이 V의 payload 역할과 근본적으로 달라 가장 부자연스러운 제약).
+
+## Reference
+
+- [Do Transformers Need Three Projections? (arXiv:2606.04032)](https://arxiv.org/pdf/2606.04032)
+- [GQA: Training Generalized Multi-Query Transformer Models](https://arxiv.org/abs/2305.13245)
+- [MQA: Fast Transformer Decoding (Shazeer, 2019)](https://arxiv.org/abs/1911.02150)
+- [DeepSeek-V2 (MLA)](https://arxiv.org/abs/2405.04434)
+- [Does Self-Attention Need Separate Weights in Transformers? (Kowsher et al., 2025)](https://aclanthology.org/2025.naacl-industry.44/)
+
+---  
+
+## My Insight
+
+오랜만에 Attention Algorithm을 다루는 논문을 보았다. 사실 예전에 공부많이 했던 내용들을 이번기회에 다시 다잡게 된 것 같다.
+특히나 같이 논문 스터디를 하는 modeler 지인분께서 설명을 잘해주셨고, 본인은 RAG/Agent를 다루기 때문에 서로 다른 시각에서 리뷰해서 더 좋았던 것 같다.  
+  
+논문을 읽으면서 번뜩였던 재미난 부분은 Attention의 QKV가 model의 근간이 되는 알고리즘이지만 본인의 역할에 입각해서는 Attention 역시 일종의 Retrieval 이다. 따라서 Semantic Search를 할 때 어떤 방면으로 응용해볼 수 있지 않을까..? 이것도 한번 봐야겠다.. ㅋㅋ  
+
+요즘 회사에서 research를 많이 못하다 보니 오히려 이럴때 아이디어가 더 많이 생기나 보다. 아이 참,, ㅋㅋ 할건 많고 시간은 없네..
