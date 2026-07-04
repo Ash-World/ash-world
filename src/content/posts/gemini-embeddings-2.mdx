@@ -3,7 +3,7 @@ title: "[Paper Review] Gemini Embedding 2: A Native Multimodal Embedding Model f
 description: "논문리뷰 : https://arxiv.org/pdf/2605.27295"
 publishDate: 2026-06-08
 tags: ["Research", "Embedding", "Review"]
-draft: true
+draft: false
 cover: "/ash-world/assets/emb_gemini_cover.png"
 ---
 
@@ -56,29 +56,29 @@ image, text, video, and document modalities](/ash-world/assets/emb_gemini_01.png
 - Gemini Embedding 2는 서로 다른 modality 및 이들을 조합한 입력에 대해 **holistic한 표현(representation)**을 생성하도록 설계되었으며, 이렇게 만들어진 표현은 retrieval, clustering, classification, ranking 등 다양한 downstream task에 활용될 수 있다.
 - 모델은 **Gemini로부터 초기화(initialize)**된 뒤 task-specific / modality-specific / cross-modality 학습으로 fine-tuning 된다. 즉, Gemini가 이미 보유한 방대한 지식 위에서 표현을 쌓아 올리는 방식이며, 이 초기화 단계 자체를 임베딩 모델의 "pre-training" 단계로 이해할 수 있다.
 - 이전 Gemini Embedding 모델과 유사한 방식으로 표현을 구성하지만, **핵심 차이점은 각 modality마다 raw format을 token sequence로 변환하는 단계가 다르다**는 점이다. Gemini Embedding 2는 Gemini를 활용해 이러한 데이터/포맷 변환을 수행하므로, 이미지·비디오·오디오를 Gemini가 native하게 지원하는 형태로 그대로 입력받을 수 있다.
-- 처리 파이프라인은 다음과 같다. (`T`: L개 토큰 시퀀스, `M`: 트랜스포머, `P`: pooler, `f`: linear projection)
-    - **Tokenization** : 입력을 `L`개의 토큰 시퀀스 `T`로 변환한다.
-    - **Transformer M** : Gemini로부터 초기화된 **bidirectional attention** 트랜스포머가 토큰 시퀀스를 처리하여 토큰 임베딩 `T_embed = M(T)` (`∈ R^(L×d_M)`)를 생성한다.
-    - **Pooler P** : 입력 전체 정보를 담는 단일 임베딩을 만들기 위해 pooler를 적용한다. 선행 연구에서 단순한 pooling 전략이 효과적임이 확인되었으므로, 시퀀스 축을 따라 단순 평균을 취하는 **mean pooling**을 사용한다 (`P_embed = P(T_embed)`).
-    - **Linear projection f** : 마지막으로 무작위 초기화된 선형 projection을 적용해 목표 차원 `d`로 스케일링한다 (`E = f(P_embed) ∈ R^d`).
+- 처리 파이프라인은 다음과 같다. ($\mathbf{T}$: $L$개 토큰 시퀀스, $\mathcal{M}$: 트랜스포머, $\mathcal{P}$: pooler, $f$: linear projection)
+    - **Tokenization** : 입력을 $L$개의 토큰 시퀀스 $\mathbf{T}$로 변환한다.
+    - **Transformer $\mathcal{M}$** : Gemini로부터 초기화된 **bidirectional attention** 트랜스포머가 토큰 시퀀스를 처리하여 토큰 임베딩 $\mathbf{T}_{embed} = \mathcal{M}(\mathbf{T}) \in \mathbb{R}^{L \times d_{\mathcal{M}}}$를 생성한다.
+    - **Pooler $\mathcal{P}$** : 입력 전체 정보를 담는 단일 임베딩을 만들기 위해 pooler를 적용한다. 선행 연구에서 단순한 pooling 전략이 효과적임이 확인되었으므로, 시퀀스 축을 따라 단순 평균을 취하는 **mean pooling**을 사용한다 ($\mathbf{P}_{embed} = \mathcal{P}(\mathbf{T}_{embed})$).
+    - **Linear projection $f$** : 마지막으로 무작위 초기화된 선형 projection을 적용해 목표 차원 $d$로 스케일링한다 ($\mathbf{E} = f(\mathbf{P}_{embed}) \in \mathbb{R}^{d}$).
 
 ### 3.2 Training Objective
 - Multimodal 특성상 서로 다른 modality를 별도의 task로 학습할 수 있도록 **multi-task & multi-stage 방식**의 학습이 요구된다. single-modality task, multimodal task, cross-modal task를 모두 활용한다.
-- 이전 버전과 마찬가지로 **in-batch negative를 사용하는 noise-contrastive estimation(NCE) loss**로 학습한다. 하나의 학습 예제는 query `q_i`, positive target `p_i^+`, 그리고 (선택적으로) hard negative target `p_i^-`로 구성된다.
-    - 텍스트 전용 task에서는 "question answering", "fact checking"과 같이 task의 성격을 기술하는 **task string `t`**가 함께 주어진다. 학습 중에는 이 task string을 무작위로 drop하여, task string이 없는 다양한 modality 입력에 대한 robustness를 강화한다.
-    - Query와 passage는 `q_i = f(mean_pool(M(t ⊕ q_i)))`, `p_i^± = f(mean_pool(M(p_i^±)))` 형태로 임베딩된다.
-- Batch size `B`에 대한 loss는 아래와 같으며, `sim(x, y) = xᵀy / (‖x‖‖y‖)`는 cosine similarity, `τ`는 temperature이다.
+- 이전 버전과 마찬가지로 **in-batch negative를 사용하는 noise-contrastive estimation(NCE) loss**로 학습한다. 하나의 학습 예제는 query $q_i$, positive target $p_i^+$, 그리고 (선택적으로) hard negative target $p_i^-$로 구성된다.
+    - 텍스트 전용 task에서는 "question answering", "fact checking"과 같이 task의 성격을 기술하는 **task string $t$**가 함께 주어진다. 학습 중에는 이 task string을 무작위로 drop하여, task string이 없는 다양한 modality 입력에 대한 robustness를 강화한다.
+    - Query와 passage는 $\mathbf{q}_i = f(\mathrm{mean\_pool}(\mathcal{M}(t \oplus q_i)))$, $\mathbf{p}_i^{\pm} = f(\mathrm{mean\_pool}(\mathcal{M}(p_i^{\pm})))$ 형태로 임베딩된다.
+- Batch size $B$에 대한 loss는 아래와 같으며, $\mathrm{sim}(\mathbf{x}, \mathbf{y}) = \mathbf{x}^\top \mathbf{y} / (\lVert\mathbf{x}\rVert \lVert\mathbf{y}\rVert)$는 cosine similarity, $\tau$는 temperature이다.
 
-```
-              1   B  ⌈        exp(sim(q_i, p_i^+)/τ)                                          ⌉
-L(loss)  =  ─── · Σ  |  -log ─────────────────────────────────────────────────────────────  |
-              B  i=1 ⌊  exp(sim(q_i,p_i^+)/τ) + exp(sim(q_i,p_i^-)/τ) + Σ_j mask(i,j)·exp(sim(q_i,p_j^+)/τ) ⌋
+$$
+\mathcal{L} = \frac{1}{B} \sum_{i=1}^{B} \left[ -\log \frac{e^{\mathrm{sim}(\mathbf{q}_i, \mathbf{p}_i^+)/\tau}}{e^{\mathrm{sim}(\mathbf{q}_i, \mathbf{p}_i^+)/\tau} + e^{\mathrm{sim}(\mathbf{q}_i, \mathbf{p}_i^-)/\tau} + \sum_{j=1}^{B} \mathrm{mask}(i,j)\, e^{\mathrm{sim}(\mathbf{q}_i, \mathbf{p}_j^+)/\tau}} \right]
+$$
 
-mask(i, j) = 0  if  q_i = q_j  or  p_i^+ = p_j^+ ,   otherwise 1
-```
+$$
+\mathrm{mask}(i, j) = \begin{cases} 0 & \text{if } q_i = q_j \text{ or } p_i^+ = p_j^+ \\ 1 & \text{otherwise} \end{cases}
+$$
 
-- 여기서 `mask(i,j)`는 `q_i = q_j` 이거나 `p_i^+ = p_j^+`일 때 `0`, 그 외에는 `1`의 값을 가진다. 이 masking 항은 label(target) 수가 적은 **classification task에서 특히 중요**하다. 또한 hard negative가 없는 경우 분모의 두 번째 항은 생략된다.
-- **MRL(Matryoshka Representation Learning)** 을 적용해 하나의 모델로 여러 차원의 임베딩을 지원한다. 임베딩 차원의 겹치는 sub-dimension들에 대해 `k`개의 개별 loss를 두어(예: 첫 768차원, 첫 1,536차원 등) 학습한다. Gemini Embedding 2는 `d = 3,072` 차원 임베딩을 제공하며 768 / 1,536 차원에 대해 MRL이 최적화되어 있다.
+- 여기서 $\mathrm{mask}(i,j)$는 $q_i = q_j$ 이거나 $p_i^+ = p_j^+$일 때 $0$, 그 외에는 $1$의 값을 가진다. 이 masking 항은 label(target) 수가 적은 **classification task에서 특히 중요**하다. 또한 hard negative가 없는 경우 분모의 두 번째 항은 생략된다.
+- **MRL(Matryoshka Representation Learning)** 을 적용해 하나의 모델로 여러 차원의 임베딩을 지원한다. 임베딩 차원의 겹치는 sub-dimension들에 대해 $k$개의 개별 loss를 두어(예: 첫 768차원, 첫 1,536차원 등) 학습한다. Gemini Embedding 2는 $d = 3{,}072$ 차원 임베딩을 제공하며 768 / 1,536 차원에 대해 MRL이 최적화되어 있다.
 
 ### 3.3 Recipe
 - multi-task 학습 setup에 크게 의존하여 서로 다른 task들이 각기 다른 방식으로 통합 임베딩 공간 형성에 기여하도록 하며, Gecko 및 Gemini Embedding에서 채택한 **multi-stage 학습**을 따른다.
@@ -190,3 +190,8 @@ mask(i, j) = 0  if  q_i = q_j  or  p_i^+ = p_j^+ ,   otherwise 1
 ---  
 
 ## My Insight
+
+처음 논문을 볼 땐 technical한 부분이 자세히 표현되길 바랬었다. 
+그런데 논문을 읽어보니 내용이 너무 간결하여 기대했던 내용이 보이지 않아 아쉬웠다. 
+특히 multimodal data type의 다양성이 넓어짐에 따라 보편적인 성능을 추론해내는 작업은 상당히 어려운데, 이러한 문제를 해결하기 위한 gemini만의 data/training 노하우를 기대했었던 것 같다. 
+물론 본인은 modeler가 아니라 함부로 판단하기 어렵지만, 같이 리뷰했던 modeler 지인의 의견이 비슷한 것을 보아 technical report는 역시나인듯 하다.
