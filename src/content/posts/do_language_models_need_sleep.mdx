@@ -1,0 +1,148 @@
+---
+title: "[Paper Review] Do Language Models Need Sleep?"
+description: "논문리뷰 : https://arxiv.org/pdf/2605.26099"
+publishDate: 2026-06-11
+tags: ["Research", "LLM", "Review"]
+draft: false
+cover: "/ash-world/assets/do_language_model_need_sleep_cover.png"
+---
+
+"언어 모델도 잠이 필요할까?" 라는 다소 도발적인 제목의 논문입니다.
+사람이 잠을 자며 낮 동안의 단기 기억을 장기 기억으로 정리(consolidation)하는 것처럼, LLM도 attention cache에 쌓인 문맥을 **비우기 전에 잠깐 "잠들어(sleep)"** 가중치(fast weight)로 옮겨 담자는 아이디어입니다.
+핵심은 이 consolidation 과정에 **recurrence(반복 연산)**를 부여하여, 추론 시점의 지연(latency)은 그대로 유지하면서도 더 깊은 reasoning을 가능하게 한다는 점입니다. 제대로 알아봅시다!
+
+## Abstract
+- Transformer 기반 LLM은 long-horizon task에 점점 많이 쓰이지만, attention 메커니즘은 context length에 대해 **확장성이 나쁘다**(연산은 제곱, cache 메모리는 선형으로 증가).
+- 이를 해결하기 위해 **sleep과 유사한 consolidation 메커니즘**을 제안한다. 모델이 주기적으로 최근 context를 persistent fast weight로 변환한 뒤 key-value(KV) cache를 비운다.
+- **sleep 동안** 모델은 누적된 context에 대해 $N$번의 offline recurrent pass를 수행하며, learned local rule을 통해 state-space model(SSM) 블록의 fast weight를 갱신한다.
+- **추론(inference) 시점**에는 이 추가 연산이 sleep 단계로 옮겨지므로, wake-time 예측의 latency는 그대로 유지된다.
+- cellular automata, multi-hop graph retrieval 같은 통제된 synthetic task와, 일반 transformer 및 SSM-attention hybrid가 실패하는 현실적인 math reasoning task(GSM-Infinite)에서 검증하였다.
+- **sleep 지속시간 $N$을 늘릴수록 성능이 향상**되며, 특히 깊은 reasoning이 필요한 예제에서 가장 큰 이득을 얻었다.
+
+## 1. Introduction
+### 1-1. 문제의식 : 확장 가능한 메모리 ≠ 확장 가능한 추론
+- LLM은 transformer 기반으로 context를 attention cache에 저장하고 필요할 때 조회한다. 이 메모리 메커니즘이 성능의 핵심이지만, **총 attention 연산은 context length에 대해 제곱으로, cache 메모리는 선형으로 증가**하여 확장성이 떨어진다.
+- SSM 같은 efficient sequence model은 고정 크기의 fast weight memory를 full self-attention과 교차 배치(interleave)하여 이 비용을 완화한다. 이러한 **hybrid 설계**는 (1) 최근 토큰에 대한 고정밀 접근을 주는 attention과 (2) active window 너머의 정보를 압축하는 weight 기반 메모리라는 두 형태의 메모리를 결합하며, 최근 대형 frontier 모델에서 흔히 쓰인다.
+- 그러나 **확장 가능한 메모리가 곧 확장 가능한 추론을 의미하지는 않는다.** fast weight memory가 long-range recall은 지원할 수 있어도, 이미 KV cache에서 빠져나간(evicted) 토큰에 대해 **깊은 연산**을 지원할 수 있는지는 불분명하다.
+- 본 논문의 발견 : vanilla SSM-attention hybrid의 성능은 **저장할 정보량을 고정하더라도 요구되는 reasoning depth가 깊어질수록 저하된다.** 즉 병목은 메모리 용량이 아니라, **evicted context를 유용한 내부 상태로 변환하는 데 쓸 수 있는 연산량**이다.
+
+### 1-2. 생물학적 영감 : Sleep
+- 동물에서 단기 기억 → 장기 기억으로의 전이는 hippocampal replay에 의해, 특히 **수면 중에** 이루어진다고 알려져 있다. 이 과정에서 단기 hippocampal 기억이 재활성화되어 cortical synaptic weight로 consolidation 된다.
+- 수면은 동물이 외부 자극에 반응하지 못하게 만들므로, 그만큼의 **인지적 이득**이 있어야 그 비용을 정당화할 수 있다.
+- 이에 착안하여, context window가 가득 차면 모델이 **"sleep" 상태에 진입**해 누적 context에 대해 여러 번 forward pass를 수행하며 fast weight를 재귀적으로 갱신하는 방법을 제안한다. 동물의 수면처럼 이 단계에서는 외부 입력 토큰을 받지 않는다. consolidation이 끝나면 context window를 비우고 갱신된 fast weight로 작동을 재개한다. 학습은 전체 과정을 관통하는 backpropagation으로 **end-to-end** 최적화된다.
+
+### 1-3. 핵심 통찰과 기여
+- 아이디어는 depth-recurrent / looped neural network에서 착안하였다. **핵심 통찰은 recurrence를 예측(prediction)뿐 아니라 memory consolidation에도 사용할 수 있다**는 것이다. 관측된 토큰을 유용한 weight memory로 변환하는 것 자체가 nontrivial한 연산이며 단일 pass로 달성될 필요가 없다.
+- 따라서 fast weight 형성 단계에 recurrent 연산을 더 많이 배분하면, context를 변환할 단계가 늘어난다. **recurrence의 깊이(= sleep 지속시간)를 늘리면 sleep 이후의 reasoning이 개선**된다. 기존 looped 모델과 달리 **예측 시점에는 loop가 없어**, 추가 연산은 이미 fast weight를 형성하는 데 소모되어 single-pass 예측을 지원한다.
+- **주요 기여**
+    - 통제된 실험에서, reasoning depth가 증가하면 **vanilla SSM(Gated Delta Nets, GDN)이 충분한 fast weight 용량에도 불구하고 실패**함을 보인다.
+    - recurrent 연산과 fast weight memory 블록을 결합한 아키텍처를 제안하고, **recursion 횟수를 늘리면 GDN 대비 성능이 향상**됨을 보인다. 가장 큰 이득은 가장 깊은 reasoning을 요구하는 문제에서 나타난다.
+    - pre-trained LLM 초기화를 사용해 자연어 math reasoning 데이터셋인 **GSM-Infinite**에서 효과를 추가 검증한다.
+
+## 2. Related Work
+- **Fast weights & linear RNN** : linear RNN/SSM은 sequence length에 따라 제곱으로 커지는 KV cache 대신 online fast weight memory를 유지하는 것으로 볼 수 있다. delta-rule 갱신과 gate로 선택적 쓰기·덮어쓰기·망각이 가능하지만, 고정 메모리 크기 때문에 exact copying/retrieval에서 full attention보다 약하다. 본 논문은 여기서 더 나아가 **저장할 정보량을 고정해도 reasoning depth가 커지면 이런 모델이 실패**함을 보인다.
+- **Context compression** : test-time에 문맥 정보를 압축(긴 context를 짧은 hidden state로, 혹은 offline self-study로 작은 KV cache로)하는 방법들. 이들은 attention context에 남는 것을 줄이는 반면, 본 방법은 **evicted context를 weight 기반 메모리로 전이**한다.
+- **Context distillation** : contextful teacher를 모방해 active context를 weight로 distill. 본 방법은 미리 정해진 loss에 대한 gradient descent 대신 **learned recurrent forward pass**로 context를 weight로 옮긴다.
+- **Test-time training** : Tandon 등은 full attention을 sliding-window로 대체하고 일부 MLP layer에 test-time gradient update를 적용(1-step). 본 방법은 learned recurrent forward pass를 memory-update rule로 사용해 더 유연하며, reasoning depth와 문제 길이를 독립적으로 통제하는 synthetic task로 평가한다.
+- **Depth-recurrent models** : depth를 늘리면 표현력이 커지고, depth-recurrence로 Turing-complete에 도달할 수 있다. recurrent depth는 training compute에 맞춰 확장하는 것이 권장된다.
+- **Offline planning** : 성공적인 planning은 새로 관측한 정보와 과거 기억의 결합을 요구한다. 이를 choice time에 online으로 하면 비싸므로, **off-task rest 동안의 offline planning으로 비용을 분할**할 수 있다. 본 논문은 sleep과 유사한 offline 단계에서 fast weight를 재귀적으로 갱신하면 prediction-phase latency 제약을 지키면서 evicted context에 대한 reasoning이 개선됨을 보인다.
+- **Sleep** : wake-sleep, contrastive divergence, replay buffer 등 생물학적 수면에서 영감을 받은 ML 기법들이 있다. (동시기 연구인 Behrouz 등도 RL·파라미터 확장·teacher-student distillation 기반의 sleep 영감 consolidation을 제안 — 본 논문과 제목이 겹쳐 각주로 언급)
+
+## 3. Preliminaries
+### 3-1. Sequence mixers
+- **Attention** : softmax attention은 각 토큰이 query-key 유사도에 따라 이전 토큰의 정보를 조회하는 sequence-mixing 연산이다. 임의의 이전 토큰을 참조할 수 있지만 $\mathbf{K}_t, \mathbf{V}_t$(KV cache)를 저장해야 하며 그 크기는 sequence length에 **선형으로 증가**한다.
+- **Linear recurrent layer (SSM)** : 과거를 고정 크기 fast-weight state에 저장한다. Mamba 스타일의 gated Hebbian outer-product 갱신은 다음과 같다.
+
+$$
+\mathbf{S}_t = \alpha_t \mathbf{S}_{t-1} + \beta_t \mathbf{v}_t \mathbf{k}_t^\top, \qquad \mathbf{o}_t = \mathbf{S}_t \mathbf{q}_t
+$$
+
+- 여기서 $\alpha_t \in (0,1)$은 forget gate, $\beta_t \in (0,1)$은 input gate로 모두 data-dependent 하다. fast weight $\mathbf{S}_t$는 $t$에 따라 커지지 않아 **메모리 효율적이지만 lossy**하다(과거 토큰이 고정 크기 메모리로 압축됨). 실험에서는 delta-rule 보정을 추가한 **Gated Delta Networks(GDN)** 를 사용한다.
+- **Block / Hybrid** : sequence mixer + normalization + residual + MLP가 하나의 블록을 이룬다. attention 블록($\mathcal{B}^{\mathrm{attn}}$)과 linear recurrent 블록($\mathcal{B}^{\mathrm{ssm}}$)을 **교차 배치한 것이 hybrid 모델**이다.
+
+### 3-2. Synthetic reasoning tasks
+- **Rule 110** : 고정된 local transition rule에 따라 이진 문자열이 진화하는 1차원 이진 cellular automaton. $t$-step 후의 상태를 예측하는 일반 문제는 **P-complete**이며 효율적인 병렬 shortcut이 없다 → 깊은 sequential 연산 수행 능력을 시험하기에 좋다.
+- **Depo** : Allen-Zhu가 제안한 multi-hop knowledge retrieval task. shuffled directed cycle 뒤에 query가 붙고, 각 query는 시작 노드에서 $k$개의 outgoing edge를 따라간 노드를 묻는다. $k$가 클수록 더 깊은 graph traversal이 필요하다.
+- 이 task들은 **sequence length는 고정한 채 reasoning 요구량만 변화**시켜, 모델의 reasoning 능력을 information retrieval 능력과 분리해 측정할 수 있게 한다.
+
+## 4. Motivating example
+> **Attention-SSM hybrid는 더 이상 attend할 수 없는 context에 대해 reasoning할 수 있는가?**
+
+- hybrid 모델은 fast weight가 제한된 attention window를 보완한다는 가정에서 출발한다. 이 절에서는 그 hybrid 메커니즘이 **실패하는 경우**를 탐구한다.
+- **실험 세팅(Rule 110)** : 서로 무관한 길이 24의 이진 문자열 4개(초기 상태)를 처리한다. character-level tokenizer 사용, 총 $T = 24 \times 4 = 96$ 토큰을 처리한 뒤, 각 상태를 $t$번 transition 시킨 결과의 **첫 비트**를 예측한다. label 토큰 4개가 붙어 전체 길이 $T = 100$.
+- $t$가 reasoning depth를 통제한다. $t = 0$이면 단순 first-bit retrieval이고, **$t$가 커질수록 어려워진다.**
+- **hard-eviction 제약** : context window 크기를 $L = 24$로 두고 24토큰마다 context를 비운다. 모델은 한 번에 하나의 상태만 볼 수 있으며, 그 정보를 반드시 fast weight $\mathbf{S}_t$에 완전히 인코딩해야 한다(KV cache는 다음 상태로 넘어가기 전 완전히 evict).
+- 이 제약은 시퀀스를 두 단계로 나눈다.
+    - **Consolidation phase** (앞 96토큰) : context를 fast weight로 인코딩하는 단계.
+    - **Prediction phase** (마지막 4토큰) : 정답 토큰을 예측하는 단계.
+- **Prediction-phase latency 제약** : 예측 단계의 각 정답 토큰은 **단 한 번의 표준 forward pass**로 예측한다. 추가 loop나 chain-of-thought 토큰은 latency를 늘리므로 금지된다. 즉 예측에 필요한 모든 정보는 예측 단계 이전에 fast weight로 consolidation 되어 있어야 한다.
+- **결과** : hard eviction 하에서 표준 transformer는 KV cache가 이미 파괴되어 random guessing을 넘지 못한다. SSM/hybrid는 초기 상태를 fast weight에 저장할 수 있어 그보다는 낫지만, **4-layer GDN-attention hybrid의 성능은 $t$가 커질수록 급격히 하락**한다(Figure 2a). 이는 메모리 용량 문제가 아니라($T$ 고정, $t$만 변화), automaton을 $t$-step 시뮬레이션하는 데 필요한 **깊은 sequential 연산을 fixed-depth 모델이 만들어내지 못하기 때문**이다.
+- (참고) 여기서 "실패"는 무한한 데이터·연산으로도 학습 불가능하다는 뜻이 아니라, **고정된 training-token budget 하에서의** 성능 저하를 의미한다. reasoning-집약적 데이터는 web-scale corpus에서도 희소하므로, budget-통제 synthetic task는 대규모 pretraining에서 관찰되는 경향을 더 선명하게 드러낸다.
+
+## 5. LLM Sleep: Offline Recursive Memory Consolidation
+- 위 문제의 해법으로, LLM 학습 중 **sleep**을 도입한다. context window가 가득 차 토큰을 evict하기 전에, **consolidation phase에서 recursion을 수행**한다. 이렇게 하면 prediction-phase latency 제약을 지키면서도 (motivating example의 큰 $t$처럼) 깊은 reasoning task를 처리할 연산을 확보할 수 있다.
+- $D$개 블록 전체를 loop하면 아키텍처는 다음과 같다. ($\times N$ = 아키텍처를 $N$번 반복 통과)
+
+$$
+\mathrm{Embed} \to \big[\, \mathcal{B}_0^{\mathrm{attn}} \to \mathcal{B}_1^{\mathrm{ssm}} \to \cdots \to \mathcal{B}_{D-1}^{\mathrm{attn}} \,\big]^{\times N} \to \mathrm{OutProj}
+$$
+
+- **동작 방식**
+    - 고정 context window $L$을 가진 SSM-attention hybrid로 초기화하고, attention cache는 $L$토큰마다 완전히 evict한다.
+    - KV cache를 evict하기 **직전에**, 모델은 $N$번의 recurrent pass를 수행하며 SSM 블록의 fast weight를 (Eq. 3에 따라) 반복적으로 갱신한다. 이 fast weight를 반복 갱신하는 단계를 **sleep**이라 부른다. $N = 1$이면 vanilla hybrid로 환원된다.
+    - fast weight를 재정제한 뒤 KV cache를 비우고 다음 $L$토큰을 처리한다. 전체 context 처리 후, 정제된 메모리와 현재 context를 바탕으로 **single forward pass로** 정답을 예측한다.
+    - 학습은 전체 computational graph를 관통하는 backpropagation으로 이루어진다. 기존 depth-recurrent 모델은 재귀적으로 정제된 feature vector를 통해 gradient가 흐르지만, 본 방법은 sleep 이후 정제된 feature를 버리므로 **gradient가 정제된 fast weight를 통해 흐른다**.
+- **Algorithm 1 (요약)** : SSM fast weight $\mathbf{S}$를 zero-init → 토큰을 길이 $\le L$의 비겹침 chunk로 분할 → 각 chunk에 대해 embed 후, loss mask가 전부 0이면(consolidation phase) $N$번 loop하며 $\mathbf{S}$ 갱신, 아니면(prediction phase) 1회 pass 후 masked CE loss 계산 → 전체에 대해 backprop & optimizer step.
+
+## 6. Experiments
+- **핵심 질문** : sleep을 길게(즉 $N$을 크게) 하면, attention cache에 더 이상 없는 상태에 대해 더 깊은 reasoning을 지원하는 fast weight가 만들어지는가? 점점 어려워지는 세 세팅(cellular automaton → Depo → GSM-Infinite)에서 검증한다.
+- **공통 셋업** : Muon optimizer, AdamW lr 5e-5. 통제 실험은 4-layer GDN-attention hybrid($d=256$), GSM-Infinite는 Jet-Nemotron 아키텍처. automaton은 A6000 GPU-day 1일 미만, Depo·GSM은 H100 GPU-day 1~2일. batch size는 automaton 512, Depo 128, GSM-Infinite 256. 모든 run의 데이터 순서를 동일하게 고정.
+
+### 6-1. Cellular automaton
+- motivating example과 동일한 4-layer GDN-attention hybrid에 **sleep(consolidation 단계 recurrence)**을 추가하고 $t = 32$에서 실험. no-loop(=vanilla) vs 2/3/4 loop 비교.
+- non-looped 모델은 **약 5B 토큰을 학습해도 ~10%(random guessing) 수준**에 머문다. offline pass를 추가하면 동일 token budget에서 학습 속도와 최종 정확도가 모두 개선된다 : **2 loop ≈ 20%, 3·4 loop > 30%**.
+- context length·eviction rule·prediction-phase 연산이 모두 고정되어 있으므로, 개선은 순전히 **consolidation-time 연산 증가**에서 온다.
+
+### 6-2. Depo (k-hop retrieval)
+- 각 cycle은 최대 75노드·최대 300토큰(300으로 padding). $L = 75$이므로 각 cycle이 **4개의 cache window에 걸쳐 분할**된다. 예측 시점에는 cycle context가 이미 evict된 상태.
+- automaton보다 어려운 이유 : (1) cycle이 4개 window에 분할되고, (2) $k$와 시작 노드가 무작위 샘플링되어 **query-agnostic 표현**을 형성해야 한다. $k \in \{1,2,4,8,16\}$.
+- **결과(Figure 3)** : offline loop를 늘리면 4-hop 이상 query의 학습 속도가 개선된다. 1-loop는 4-hop 이상에서 거의 진전이 없고, 2-loop는 8-hop 이상에서 정체, **주어진 budget 내에서 가장 어려운 16-hop을 개선하기 시작하는 것은 4-loop 모델뿐**이다.
+
+### 6-3. GSM-Infinite (pre-trained LLM)
+- 통제 task의 경향이 **pretrained LLM으로 확장되는지** 검증. GSM-Infinite는 GSM8K를 본떠 만든 synthetic reasoning benchmark로, 문제 길이(distractor 토큰)와 난이도(산술 연산 수)를 통제한다. long-context 처리와 multi-step reasoning을 **모두** 요구한다.
+- 각 문제 2,000~3,300토큰, 연산 수 1~8. 질문을 context 앞에 두고 CoT를 배제해 **single prediction forward pass로 최종 답**을 강제. context window $L = 2000$이라 전체 문제가 window에 들어가지 않아 예측 시 대부분을 attend할 수 없다.
+- pretrained로부터의 두 가지 instantiation : (1) SSM-attention hybrid **Jet-Nemotron 2B**를 sleep recurrence로 fine-tune (전체 28블록 중 중간 14블록 loop, $N \in \{1,2,4,6\}$), (2) depth-recurrent **Ouro 1.4B**에 SSM 메모리 layer 추가 (전체 블록 loop, $N \in \{1,2,4\}$).
+- **결과(Figure 4)** : 쉬운 2·4-op는 loop 수와 무관하게 포화. 연산 수가 늘수록 loop 수 간 격차가 벌어지며, offline recurrence가 6·8-op의 최종 정확도와 학습 속도를 모두 개선한다.
+    - Jet 6 loop : 6-op $0.742 \to 0.812$, 8-op $0.351 \to 0.388$
+    - Ouro 4 loop : 6-op $0.419 \to 0.615$, 8-op $0.210 \to 0.272$ (depth-recurrent pretraining 덕에 격차가 더 큼)
+- → **sleep-time 연산이 현실적인 math reasoning 데이터와 pretrained LLM에서도 multi-step reasoning을 지원**함을 시사.
+
+### 6-4. Sliding-window eviction
+- context window를 매번 완전히 비우는 대신, sleep 후 **최근 $L-1$ 토큰은 유지하고 더 오래된 토큰만 evict**하는 sliding-window(SWA) 전략도 가능하다. active context가 여전히 $L$로 제한되어 추론 시 peak 메모리는 늘지 않는다. $N=1$이면 표준 SWA-SSM hybrid, $N>1$이면 오래된 context가 빠지기 전 추가 consolidation 수행.
+- GSM-Infinite $L=512$(전체 길이 ≈ window의 4~6배)에서 Ouro 1.4B를 $N \in \{1,2,4\}$로 fine-tune. (Jet layer를 1 epoch warm-up 후 전체 2 epoch 학습 — $N>1$에는 warm-up 시 hard eviction이 중요)
+- **결과(Figure 5)** : 모든 연산 수에서 $N$을 늘릴수록 정확도가 향상. Figure 4와 달리 SWA-SSM baseline은 2-op처럼 가장 쉬운 문제에서도 부진한데, **4 loop가 2-op 정확도를 $0.596 \to 0.905$(약 52% 향상)** 로 크게 끌어올린다.
+- → active window가 sequence length보다 훨씬 작을 때, **긴 sleep은 multi-step reasoning뿐 아니라 관련 context의 압축·검색에도 도움**이 된다.
+
+### 6-5. Training throughput
+- **context window 간 recurrence** : 학습이 context window 간에 recurrent 하므로(window $j$와 $N$번의 sleep pass를 끝내야 window $j+1$ 처리 가능) sequence 축 병렬화가 막힌다. 하지만 window 크기 $L$이 충분히 커서 GPU를 바쁘게 유지하면 **wall-clock 학습 시간에 큰 지장이 없다**(Figure 6a).
+- **recurrent-depth 비용** : 다른 depth-recurrent 모델처럼 학습 비용은 $N$에 대해 **대략 선형으로 증가**한다(Figure 6b). 그럼에도 recurrence를 늘리면 task 성능이 일관되게 향상된다.
+
+## 7. Discussion and Limitations & Conclusion
+- **한계** : 추가 recurrent 연산을 consolidation phase로 옮겨 single-pass prediction latency를 보존하지만, 공짜는 아니다. 학습 시 $N$번의 더 깊은 forward/backward pass가 필요해 **학습이 느리고 불안정**해질 수 있다. implicit gradient, truncated BPTT, 학습 안정화 기법 등이 대응책으로 논의된다.
+- **sequentiality** : sleep은 학습을 context·depth 축에서 sequential하게 만든다. 그러나 바로 이 sequentiality가 본 방법이 다루는 task에서 이득을 내는 이유이기도 하다. reasoning·simulation·decision-making 문제의 해법은 본질적으로 sequential한 경우가 많으며, 이를 완전 병렬 연산으로 풀려 하면 **취약한 shortcut solution**을 유도한다.
+- **Conclusion** : evict하기 전에 여러 번의 recursive forward pass로 fast weight를 반복 정제하는 **sleep과 유사한 과정**을 제안한다. vanilla attention-SSM hybrid와 달리, sleep은 더 이상 attend할 수 없는 과거 context에 대한 깊은 reasoning을 가능하게 한다. 통제된 synthetic task와 현실적인 math reasoning benchmark 전반에서, **recursion 수(sleep 지속시간)를 늘리면 evicted context에 대한 깊은 sequential 연산 능력이 향상**됨을 보였다.
+
+## Reference
+
+- [Do Language Models Need Sleep? (arXiv:2605.26099)](https://arxiv.org/pdf/2605.26099)
+- [Physics of Language Models: Part 4.1 (Allen-Zhu)](https://arxiv.org/abs/2404.05405)
+- [Gated Delta Networks](https://arxiv.org/abs/2412.06464)
+- [GSM-Infinite](https://arxiv.org/abs/2502.05252)
+
+---  
+
+## My Insight
+
+굉장히 신선하다. 생물학적인 영감이 llm의 학습과정에 반영되어 표현된 것이 매우 인상적이었다.
+보다보니 드는 생각은 저 sleep에 대한 알고리즘을 Agent의 Inner Thought 혹은 Retriever 방식에 적용해볼 수는 없을까? 싶은 생각이 들었다. 
+몇가지 아이디어가 떠오르지만,, 이것은 테스트좀 해보고 잘되면? ㅎㅎ 공유하도록 하겠다.
